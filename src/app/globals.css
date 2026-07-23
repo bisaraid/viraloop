@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0f1117;
+  --foreground: #ededed;
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --muted: #1e2129;
+  --muted-foreground: #888;
+  --border: #2a2d36;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  padding: 10px 24px;
+  border-radius: 8px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-primary:hover { background: var(--primary-hover); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-secondary {
+  background: var(--muted);
+  color: var(--foreground);
+  padding: 10px 24px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-secondary:hover { background: #2a2d36; }
+
+.card {
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.input-field {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--foreground);
+  width: 100%;
+  font-size: 14px;
+}
+.input-field:focus { outline: none; border-color: var(--primary); }
+
+.select-field {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--foreground);
+  width: 100%;
+  font-size: 14px;
+  cursor: pointer;
+}
+.select-field:focus { outline: none; border-color: var(--primary); }
+
+.textarea-field {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--foreground);
+  width: 100%;
+  font-size: 14px;
+  resize: vertical;
+  min-height: 80px;
+}
+.textarea-field:focus { outline: none; border-color: var(--primary); }
+
+.slider-field {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: #ccc;
+}
