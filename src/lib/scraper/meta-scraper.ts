@@ -146,6 +146,121 @@ function extractProductNameFromUrl(url: string): string | undefined {
 }
 
 /**
+ * Extract shopid dan itemid dari URL Shopee
+ * Pola: shopee.co.id/{slug}/{shopid}/{itemid}
+ */
+function extractShopeeIds(url: string): { shopid?: string; itemid?: string } | undefined {
+  try {
+    const parsed = new URL(url);
+    const pathParts = parsed.pathname.split('/').filter(p => p.length > 0);
+    // Cari 2 angka terakhir di path
+    const numbers: string[] = [];
+    for (let i = pathParts.length - 1; i >= 0; i--) {
+      if (/^\d+$/.test(pathParts[i])) {
+        numbers.push(pathParts[i]);
+      }
+      if (numbers.length >= 2) break;
+    }
+    if (numbers.length >= 2) {
+      // Shopee URL: /{slug}/{shopid}/{itemid}
+      // Setelah resolve redirect, biasanya pattern: /product/{shopid}/{itemid}
+      return {
+        shopid: numbers[1],
+        itemid: numbers[0],
+      };
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+/**
+ * Fetch data produk dari Shopee internal API
+ */
+async function fetchShopeeItem(url: string): Promise<ScrapedProduct | null> {
+  const ids = extractShopeeIds(url);
+  if (!ids || !ids.shopid || !ids.itemid) {
+    return null;
+  }
+
+  const apiUrl = `https://shopee.co.id/api/v4/item/get?itemid=${ids.itemid}&shopid=${ids.shopid}`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(apiUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Referer': 'https://shopee.co.id/',
+      },
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      console.warn(`[Scraper][ShopeeAPI] HTTP ${response.status} untuk ${apiUrl}`);
+      return null;
+    }
+
+    const body = await response.text();
+    
+    // Cek apakah JSON valid
+    try {
+      const json = JSON.parse(body);
+      if (json.error) {
+        console.warn('[Scraper][ShopeeAPI] Error:', json.error);
+        return null;
+      }
+      
+      const data = json.data;
+      if (!data) {
+        console.warn('[Scraper][ShopeeAPI] No data field');
+        return null;
+      }
+
+      // Map Shopee API response ke ScrapedProduct
+      const title = data.name || '';
+      const description = data.description || title;
+      const imageUrl = data.image || data.images?.[0] || '';
+      const price = data.price ? String(data.price) : undefined;
+      const currency = data.currency || 'IDR';
+      const rating = data.item_rating?.rating_star ? data.item_rating.rating_star : undefined;
+      const reviewCount = data.item_rating?.rating_count || undefined;
+
+      if (!title && !description) {
+        return null;
+      }
+
+      return {
+        title,
+        description,
+        imageUrl,
+        siteName: 'shopee.co.id',
+        price,
+        currency,
+        rating,
+        reviewCount,
+      };
+    } catch {
+      console.warn('[Scraper][ShopeeAPI] Response is not valid JSON');
+      return null;
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      console.warn(`[Scraper][ShopeeAPI] Timeout: ${apiUrl}`);
+    } else {
+      console.error('[Scraper][ShopeeAPI] Fetch failed:', error);
+    }
+    return null;
+  }
+}
+
+/**
  * Scrape product info from URL
  */
 export async function scrapeProductMeta(url: string, timeoutMs: number = 5000): Promise<ScrapedProduct | null> {
@@ -182,6 +297,23 @@ export async function scrapeProductMeta(url: string, timeoutMs: number = 5000): 
     }
 
     const html = await response.text();
+
+    // Parse URL untuk hostname check
+    const parsedUrl = new URL(url);
+
+    // DEBUG LOG — temporary
+    console.debug('[Scraper] DEBUG:', {
+      url,
+      status: response.status,
+      htmlLength: html.length,
+      snippet: html.slice(0, 500),
+    });
+
+    // Untuk Shopee, coba internal API terlebih dahulu
+    let scrapedProduct: ScrapedProduct | null = null;
+    if (parsedUrl.hostname.includes('shopee.co.id')) {
+      scrapedProduct = await fetchShopeeItem(url);
+    }
 
     // Cek apakah response benar-benar HTML (bukan JSON error page)
     if (!html.trim().startsWith('<') && !html.trim().startsWith('<!')) {

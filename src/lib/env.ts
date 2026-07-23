@@ -21,6 +21,7 @@ const OPTIONAL_VARS = [
   'AI_FALLBACK_ENABLED',
   'GOOGLE_CSE_ID',
   'GOOGLE_CSE_API_KEY',
+  'BROWSERLESS_API_KEY',
 ] as const;
 
 function validateEnv(): void {

@@ -30,6 +30,7 @@ export default function Home() {
   // Scraping state
   const [isScraping, setIsScraping] = useState(false);
   const [scrapeError, setScrapeError] = useState('');
+  const [showManualFallback, setShowManualFallback] = useState(false);
   const [expandedScene, setExpandedScene] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
@@ -484,18 +485,6 @@ export default function Home() {
             </div>
           )}
 
-          {/* Topik untuk affiliate — input manual saja */}
-          {isAffiliate && (
-            <div>
-              <label className="label">Judul / Ide Topik</label>
-              <input
-                className="input-field"
-                placeholder="Ketik manual (atau biarkan kosong untuk pakai deskripsi produk)"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-              />
-            </div>
-          )}
 
           {/* Affiliate form — cukup paste URL, sisanya otomatis */}
           {isAffiliate && (
@@ -525,10 +514,11 @@ export default function Home() {
                         if (data.success && data.data) {
                           const d = data.data;
                           const desc = d.description || d.title || '';
+                          const scrapedPrice = d.price || d.currency ? (d.price || '') : '';
                           setAffiliateInput({
                             productUrl: url,
                             productDescription: desc,
-                            productPrice: d.price || '',
+                            productPrice: scrapedPrice,
                             productRating: d.rating || undefined,
                             reviews: d.reviewSnippets && d.reviewSnippets.length > 0
                               ? d.reviewSnippets
@@ -559,6 +549,29 @@ export default function Home() {
                   <p className="text-xs text-green-400 mt-1">
                     ✅ Data produk berhasil diambil! {affiliateInput.productPrice ? `Harga: Rp ${affiliateInput.productPrice}` : ''}
                   </p>
+                )}
+
+                {/* Manual fallback form when scraping fails */}
+                {scrapeError && (
+                  <div className="mt-3 p-3 rounded-lg border border-yellow-800 bg-yellow-900/20 space-y-2">
+                    <p className="text-xs text-yellow-300">
+                      ⚠️ Beberapa produk (terutama dari Shopee) sulit diambil datanya otomatis. Silakan isi manual di bawah ini.
+                    </p>
+                    <div className="space-y-2">
+                      <input
+                        className="input-field text-sm"
+                        placeholder="Nama produk"
+                        value={affiliateInput.productDescription}
+                        onChange={(e) => setAffiliateInput({ ...affiliateInput, productDescription: e.target.value })}
+                      />
+                      <input
+                        className="input-field text-sm"
+                        placeholder="Harga (contoh: Rp 150.000)"
+                        value={affiliateInput.productPrice}
+                        onChange={(e) => setAffiliateInput({ ...affiliateInput, productPrice: e.target.value })}
+                      />
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
