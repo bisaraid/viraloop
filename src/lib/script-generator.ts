@@ -1,10 +1,39 @@
-import { groqCompletion } from '@/lib/ai/groq';
+import { aiCompletion } from '@/lib/ai/completion';
 import { getCategoryConfig } from '@/lib/categories';
 import { getDurationConfig } from '@/lib/duration';
 import { parseScriptJson, validateScriptScenes } from '@/lib/script-validator';
 import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress } from '@/lib/types';
+import { getOptionalEnvVar } from '@/lib/env';
 
-const MODEL = 'llama-3.3-70b-versatile';
+const MODEL = getOptionalEnvVar('GROQ_MODEL', 'llama-3.3-70b-versatile');
+
+// In-memory cache dengan TTL 1 jam
+const scriptCache = new Map<string, { scenes: Scene[]; failedSegment?: number; timestamp: number }>();
+const CACHE_TTL = 60 * 60 * 1000; // 1 jam
+
+function getCacheKey(categoryId: CategoryId, topic: string, duration: DurationTier, affiliateInput?: AffiliateInput): string {
+  const affSuffix = affiliateInput?.productDescription ? `:${affiliateInput.productDescription.slice(0, 50)}` : '';
+  return `${categoryId}:${topic}:${duration}${affSuffix}`;
+}
+
+function getFromCache(key: string): { scenes: Scene[]; failedSegment?: number } | null {
+  const cached = scriptCache.get(key);
+  if (!cached) return null;
+  if (Date.now() - cached.timestamp > CACHE_TTL) {
+    scriptCache.delete(key);
+    return null;
+  }
+  return { scenes: cached.scenes, failedSegment: cached.failedSegment };
+}
+
+function setCache(key: string, data: { scenes: Scene[]; failedSegment?: number }): void {
+  scriptCache.set(key, { ...data, timestamp: Date.now() });
+  // Bersihkan cache jika terlalu besar (>100 entries)
+  if (scriptCache.size > 100) {
+    const oldest = [...scriptCache.entries()].sort(([, a], [, b]) => a.timestamp - b.timestamp)[0];
+    if (oldest) scriptCache.delete(oldest[0]);
+  }
+}
 
 /**
  * Build the system prompt for a given category
@@ -72,30 +101,39 @@ Durasi: ${durConfig.label}.
 
 ${categoryId === 'affiliate' && affiliateInput ? `
 DATA PRODUK (WAJIB gunakan data ini, JANGAN mengarang):
-URL: ${affiliateInput.productUrl || 'Tidak ada'}
-Deskripsi: ${affiliateInput.productDescription}
-Ulasan: ${affiliateInput.reviews.join('\n')}
+${affiliateInput.productUrl ? `URL: ${affiliateInput.productUrl}` : ''}
+${affiliateInput.productDescription ? `Deskripsi: ${affiliateInput.productDescription}` : ''}
+${affiliateInput.productPrice ? `Harga: Rp ${affiliateInput.productPrice}` : ''}
+${affiliateInput.productRating ? `Rating: ${affiliateInput.productRating}/5` : ''}
+${affiliateInput.reviews && affiliateInput.reviews.length > 0 ? `Ulasan dari internet: ${affiliateInput.reviews.join('\n')}` : ''}
+
+${!affiliateInput.reviews || affiliateInput.reviews.length === 0 ? `
+PENTING: Buat 2-3 ulasan pengguna fiktif yang REALISTIS berdasarkan fitur deskripsi dan harga produk di atas. Ulasan harus terdengar seperti pembeli sungguhan, dengan gaya bahasa Indonesia sehari-hari.` : ''}
 
 INGAT: Hanya gunakan informasi yang ada di data di atas. Jangan tambahkan klaim atau spesifikasi yang tidak disebutkan user.` : ''}
 
 Buat scene-scene pertama sesuai outline di atas. Scene pertama (is_hook: true) harus hook yang kuat.`;
   } else {
-    // Subsequent segments: use outline + previous summary
+    // Subsequent segments: use outline + previous summary for continuity
+    const startScene = segmentIndex * scenesPerSegment + 1;
+    const endScene = Math.min((segmentIndex + 1) * scenesPerSegment, durConfig.targetScenes);
     prompt = `Lanjutkan script video dengan topik: "${topic}"
 
 OUTLINE GLOBAL CERITA:
 ${globalOutline}
 
-RINGKASAN BAGIAN SEBELUMNYA:
-${previousSummary}
+${previousSummary ? `RINGKASAN BAGIAN SEBELUMNYA (untuk referensi kontinuitas):\n${previousSummary}\n` : ''}
 
-Target: ${scenesPerSegment} scene berikutnya (scene ${segmentIndex * scenesPerSegment + 1} sampai ${Math.min((segmentIndex + 1) * scenesPerSegment, durConfig.targetScenes)}).
+Target: ${scenesPerSegment} scene berikutnya (scene ${startScene} sampai ${endScene}).
 
-Lanjutkan cerita dari bagian sebelumnya. Pastikan:
-- Nama tokoh dan setting KONSISTEN dengan bagian sebelumnya
-- Alur cerita nyambung logis
+Lanjutkan cerita dari outline global di atas. Pastikan:
+- Karakter/tokoh KONSISTEN dengan outline
+- Nama tokoh dan setting KONSISTEN
+- Alur cerita nyambung logis mengikuti outline
 - Mood sesuai dengan perkembangan cerita
-- Jangan ulangi adegan yang sudah terjadi`;
+- Jangan ulangi adegan yang sudah terjadi
+
+PENTING: Gunakan outline global sebagai panduan utama. Ringkasan sebelumnya hanya untuk referensi kontinuitas.`;
   }
 
   return prompt;
@@ -113,7 +151,8 @@ async function generateSegment(
   globalOutline: string,
   previousSummary: string,
   affiliateInput?: AffiliateInput,
-  retryCount: number = 0
+  retryCount: number = 0,
+  signal?: AbortSignal
 ): Promise<{ scenes: Scene[]; summary: string }> {
   const systemPrompt = buildSystemPrompt(categoryId);
   const userPrompt = buildSegmentPrompt(
@@ -122,14 +161,15 @@ async function generateSegment(
   );
 
   try {
-    const result = await groqCompletion({
-      model: MODEL,
+    const result = await aiCompletion({
+      model: MODEL!,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
       response_format: { type: 'json_object' },
       temperature: 0.7,
+      signal,
     });
 
     const parsed = parseScriptJson(result.content);
@@ -146,11 +186,17 @@ async function generateSegment(
 
     return { scenes: validatedScenes, summary };
   } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw error; // Don't retry aborted requests
+    }
     if (retryCount < 2) {
-      console.warn(`Segment ${segmentIndex + 1} gagal, retry ${retryCount + 1}/2:`, error);
+      // Exponential backoff: 1s, 2s
+      const delay = 1000 * Math.pow(2, retryCount);
+      console.warn(`Segment ${segmentIndex + 1} gagal, retry ${retryCount + 1}/2 dalam ${delay}ms:`, error);
+      await new Promise(resolve => setTimeout(resolve, delay));
       return generateSegment(
         categoryId, topic, duration, segmentIndex, totalSegments,
-        globalOutline, previousSummary, affiliateInput, retryCount + 1
+        globalOutline, previousSummary, affiliateInput, retryCount + 1, signal
       );
     }
     throw error;
@@ -173,15 +219,15 @@ function generateSegmentSummary(scenes: Scene[], segmentIndex: number): string {
 /**
  * Generate the global outline (first call before segments)
  */
-async function generateOutline(categoryId: CategoryId, topic: string, affiliateInput?: AffiliateInput): Promise<string> {
+async function generateOutline(categoryId: CategoryId, topic: string, affiliateInput?: AffiliateInput, signal?: AbortSignal): Promise<string> {
   const config = getCategoryConfig(categoryId);
 
   const prompt = `Buat outline 3-5 kalimat untuk cerita ${categoryId === 'affiliate' ? 'review produk' : categoryId} dengan topik: "${topic}"
 
 ${categoryId === 'affiliate' && affiliateInput ? `
 DATA PRODUK:
-Deskripsi: ${affiliateInput.productDescription}
-Ulasan: ${affiliateInput.reviews.join('\n')}
+${affiliateInput.productDescription ? `Deskripsi: ${affiliateInput.productDescription}` : ''}
+${affiliateInput.reviews && affiliateInput.reviews.length > 0 ? `Ulasan: ${affiliateInput.reviews.join('\n')}` : ''}
 ` : ''}
 
 Outline harus mencakup:
@@ -192,68 +238,136 @@ Outline harus mencakup:
 
 Format: teks biasa, 3-5 kalimat saja.`;
 
-  const result = await groqCompletion({
-    model: MODEL,
+  const result = await aiCompletion({
+    model: MODEL!,
     messages: [
       { role: 'system', content: `Kamu adalah penulis script ${config.name} Indonesia. Buat outline singkat.` },
       { role: 'user', content: prompt },
     ],
     response_format: { type: 'text' },
     temperature: 0.7,
+    signal,
   });
 
   return result.content.trim();
 }
 
 /**
- * Main function: Generate full script with multi-segment support
- * Returns scenes and progress updates via callback
+ * Main function: Generate full script with multi-segment and parallel support
+ * Returns scenes with optional parallel generation for segments 2+
  */
 export async function generateScript(
   categoryId: CategoryId,
   topic: string,
   duration: DurationTier,
   affiliateInput?: AffiliateInput,
-  onProgress?: (progress: GenerateScriptProgress) => void
+  onProgress?: (progress: GenerateScriptProgress) => void,
+  signal?: AbortSignal
 ): Promise<{ scenes: Scene[]; failedSegment?: number }> {
+  // Cek cache dulu
+  const cacheKey = getCacheKey(categoryId, topic, duration, affiliateInput);
+  const cached = getFromCache(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const durConfig = getDurationConfig(duration);
   const totalSegments = durConfig.segments;
+  const scenesPerSegment = Math.ceil(durConfig.targetScenes / totalSegments);
 
   try {
-    // Step 1: Generate outline
+    // Step 1: Generate outline (sequential — wajib)
     onProgress?.({ status: 'generating_outline', message: 'Membuat outline cerita...' });
-    const globalOutline = await generateOutline(categoryId, topic, affiliateInput);
+    const globalOutline = await generateOutline(categoryId, topic, affiliateInput, signal);
 
-    // Step 2: Generate segments sequentially
+    // Step 2: Generate segments
+    // Segment 1: sequential (has the hook, needs full outline context)
+    // Segments 2+: parallel (each gets the full outline + segment 1 summary)
     const allScenes: Scene[] = [];
-    let previousSummary = '';
 
-    for (let i = 0; i < totalSegments; i++) {
+    // Cek cancel sebelum mulai
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+
+    onProgress?.({
+      status: 'generating_segments',
+      currentSegment: 1,
+      totalSegments,
+      message: `Membuat bagian 1 dari ${totalSegments}...`,
+    });
+
+    let segment1: { scenes: Scene[]; summary: string };
+    try {
+      segment1 = await generateSegment(
+        categoryId, topic, duration, 0, totalSegments,
+        globalOutline, '', affiliateInput, 0, signal
+      );
+      allScenes.push(...segment1.scenes);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw error;
+      }
+      onProgress?.({
+        status: 'error',
+        message: `Gagal di bagian 1 dari ${totalSegments}`,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+      const result = { scenes: allScenes, failedSegment: 1 };
+      setCache(cacheKey, result);
+      return result;
+    }
+
+    // Generate segments 2+ in parallel (if any)
+    if (totalSegments > 1) {
+      // Cek cancel sebelum parallel
+      if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+
       onProgress?.({
         status: 'generating_segments',
-        currentSegment: i + 1,
+        currentSegment: 2,
         totalSegments,
-        message: `Membuat bagian ${i + 1} dari ${totalSegments}...`,
+        message: `Membuat bagian 2-${totalSegments} secara paralel...`,
       });
 
-      try {
-        const segment = await generateSegment(
-          categoryId, topic, duration, i, totalSegments,
-          globalOutline, previousSummary, affiliateInput
+      const segmentPromises: Promise<{ scenes: Scene[]; summary: string; index: number }>[] = [];
+      for (let i = 1; i < totalSegments; i++) {
+        segmentPromises.push(
+          generateSegment(
+            categoryId, topic, duration, i, totalSegments,
+            globalOutline, segment1.summary, affiliateInput, 0, signal
+          ).then(result => ({ ...result, index: i }))
         );
-        allScenes.push(...segment.scenes);
-        previousSummary = segment.summary;
-      } catch (error) {
-        // Partial failure: return what we have so far
-        onProgress?.({
-          status: 'error',
-          message: `Gagal di bagian ${i + 1} dari ${totalSegments}`,
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
-        return {
-          scenes: allScenes,
-          failedSegment: i + 1,
-        };
+      }
+
+      // Wait for all parallel segments with a timeout per segment
+      const results = await Promise.allSettled(segmentPromises);
+
+      // Process results in order
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        const segIndex = i + 2; // 2-based
+
+        if (result.status === 'fulfilled') {
+          allScenes.push(...result.value.scenes);
+        } else {
+          const error = result.reason;
+          // AbortError: propagate up
+          if (error instanceof DOMException && error.name === 'AbortError') {
+            throw error;
+          }
+          // Partial failure: return what we have
+          onProgress?.({
+            status: 'error',
+            message: `Gagal di bagian ${segIndex} dari ${totalSegments}`,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          });
+          const failResult = { scenes: allScenes, failedSegment: segIndex };
+          setCache(cacheKey, failResult);
+          return failResult;
+        }
       }
     }
 
@@ -263,7 +377,9 @@ export async function generateScript(
     const validatedScenes = validateScriptScenes(allScenes, config);
 
     onProgress?.({ status: 'done', message: 'Script selesai dibuat!' });
-    return { scenes: validatedScenes };
+    const finalResult = { scenes: validatedScenes };
+    setCache(cacheKey, finalResult);
+    return finalResult;
   } catch (error) {
     onProgress?.({
       status: 'error',

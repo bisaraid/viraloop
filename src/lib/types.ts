@@ -27,8 +27,6 @@ export interface CategoryConfig {
   rules: string;
   validMoods: Mood[];
   styleSuffix: string;
-  hasCustomInput?: boolean;
-  customInputLabel?: string;
 }
 
 export interface DurationConfig {
@@ -69,8 +67,10 @@ export type TTSSettings = CartesiaSettings | ElevenLabsSettings | GTTSSettings;
 // Affiliate input
 export interface AffiliateInput {
   productUrl?: string;
-  productDescription: string;
-  reviews: string[]; // minimal 1
+  productDescription?: string;
+  productPrice?: string;
+  productRating?: number;
+  reviews?: string[];
 }
 
 // API types
@@ -85,12 +85,6 @@ export interface GenerateTTSRequest {
   scenes: Scene[];
   provider: TTSProviderId;
   settings: TTSSettings;
-}
-
-export interface ScriptSegmentResult {
-  scenes: Scene[];
-  segmentIndex: number;
-  totalSegments: number;
 }
 
 export interface GenerateScriptProgress {

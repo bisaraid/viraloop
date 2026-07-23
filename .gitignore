@@ -2,3 +2,8 @@
 .next
 .env
 .env.local
+
+# File sampah / aset tidak relevan
+*.txt
+test-*.mp3
+test-*.json

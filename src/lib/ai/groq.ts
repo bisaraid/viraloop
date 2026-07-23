@@ -11,6 +11,7 @@ export interface GroqCompletionParams {
   max_tokens?: number;
   response_format?: { type: 'json_object' | 'text' };
   temperature?: number;
+  signal?: AbortSignal;
 }
 
 export interface GroqCompletionResult {
@@ -31,6 +32,7 @@ export async function groqCompletion(params: GroqCompletionParams): Promise<Groq
 
   const response = await fetch(`${GROQ_API_BASE}/chat/completions`, {
     method: 'POST',
+    signal: params.signal,
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
@@ -46,7 +48,8 @@ export async function groqCompletion(params: GroqCompletionParams): Promise<Groq
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Groq API error (${response.status}): ${errorBody}`);
+    console.error(`[Groq API] Error ${response.status}:`, errorBody);
+    throw new Error(`Groq API gagal merespon (${response.status}). Silakan coba lagi.`);
   }
 
   const data = await response.json();

@@ -79,6 +79,13 @@ export function validateSceneMood(sceneMood: string, validMoods: string[], defau
   // Exact match
   if (validMoods.includes(cleanMood)) return cleanMood;
 
+  // Synonym mapping (dicek SEBELUM fuzzy match, karena sinonim eksak
+  // lebih penting daripada koreksi typo yang mungkin salah arah)
+  if (moodSynonyms[cleanMood]) {
+    const mapped = moodSynonyms[cleanMood];
+    if (validMoods.includes(mapped)) return mapped;
+  }
+
   // Fuzzy match with Levenshtein distance (tolerance for typos)
   const closest = validMoods.reduce<{ mood: string; score: number }>(
     (best, mood) => {
@@ -89,12 +96,6 @@ export function validateSceneMood(sceneMood: string, validMoods: string[], defau
   );
 
   if (closest.score <= 3) return closest.mood;
-
-  // Synonym mapping
-  if (moodSynonyms[cleanMood]) {
-    const mapped = moodSynonyms[cleanMood];
-    if (validMoods.includes(mapped)) return mapped;
-  }
 
   // Fallback to default or first valid mood
   return defaultMood ?? validMoods[0];
