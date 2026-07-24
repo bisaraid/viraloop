@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
         scenes: result.scenes,
         failedSegment: result.failedSegment ?? null,
         totalScenes: result.scenes.length,
+        flaggedScenes: result.scenes.filter((s) => s.flagged).length,
       },
     });
   } catch (error) {

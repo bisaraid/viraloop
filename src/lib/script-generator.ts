@@ -1,7 +1,7 @@
 import { aiCompletion } from '@/lib/ai/completion';
 import { getCategoryConfig } from '@/lib/categories';
 import { getDurationConfig } from '@/lib/duration';
-import { parseScriptJson, validateScriptScenes } from '@/lib/script-validator';
+import { parseScriptJson, validateScriptScenes, validateContentRules, validationFailureCounters } from '@/lib/script-validator';
 import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress } from '@/lib/types';
 import { getOptionalEnvVar } from '@/lib/env';
 
@@ -40,7 +40,7 @@ function setCache(key: string, data: { scenes: Scene[]; failedSegment?: number }
  */
 function buildSystemPrompt(categoryId: CategoryId): string {
   const config = getCategoryConfig(categoryId);
-  return `Kamu adalah penulis script video pendek bahasa Indonesia. 
+  let prompt = `Kamu adalah penulis script video pendek bahasa Indonesia. 
 Persona: ${config.persona}
 
 STRUKTUR CERITA:
@@ -69,6 +69,30 @@ PENTING:
 - Scene pertama (is_hook: true) harus hook yang kuat
 - image_prompt dalam bahasa Inggris, 15-25 kata
 - Narasi dalam bahasa Indonesia yang natural`;
+
+  if (config.exampleScenes && config.exampleScenes.length > 0) {
+    prompt += `\n\nCONTOH REFERENSI (multiple styles — ikuti gaya masing-masing, JANGAN gabung semua gaya menjadi satu pola):`;
+    config.exampleScenes.forEach((ex, i) => {
+      prompt += `\n\nContoh ${i + 1}:
+Narasi: ${ex.narration}
+Mood: ${ex.scene_mood}`;
+      if (ex.image_prompt) {
+        prompt += `\nImage prompt: ${ex.image_prompt}`;
+      }
+    });
+  }
+
+  prompt += `\n\nATURAN PENTING UNTUK VARIASI:
+Contoh di atas hanya referensi gaya dan struktur, BUKAN template yang harus ditiru persis. 
+Buat hook dan kalimat dengan struktur kalimat/kata pembuka yang BERBEDA dari semua contoh di atas. 
+Hindari pengulangan pola pembuka yang sama setiap generate.`;
+
+  if (config.hookAngles && config.hookAngles.length > 0) {
+    const selectedAngle = config.hookAngles[Math.floor(Math.random() * config.hookAngles.length)];
+    prompt += `\n\nHOOK ANGLE UNTUK GENERATE INI: ${selectedAngle}`;
+  }
+
+  return prompt;
 }
 
 /**
@@ -153,13 +177,14 @@ async function generateSegment(
   affiliateInput?: AffiliateInput,
   retryCount: number = 0,
   signal?: AbortSignal
-): Promise<{ scenes: Scene[]; summary: string }> {
+): Promise<{ scenes: Scene[]; summary: string; hasValidationFlagged?: boolean }> {
   const systemPrompt = buildSystemPrompt(categoryId);
   const userPrompt = buildSegmentPrompt(
     categoryId, topic, duration, segmentIndex, totalSegments,
     globalOutline, previousSummary, affiliateInput
   );
 
+  const config = getCategoryConfig(categoryId);
   try {
     const result = await aiCompletion({
       model: MODEL!,
@@ -168,7 +193,7 @@ async function generateSegment(
         { role: 'user', content: userPrompt },
       ],
       response_format: { type: 'json_object' },
-      temperature: 0.7,
+      temperature: config.temperature ?? 0.7,
       signal,
     });
 
@@ -178,8 +203,34 @@ async function generateSegment(
     }
 
     // Validate moods
-    const config = getCategoryConfig(categoryId);
     const validatedScenes = validateScriptScenes(parsed.scenes, config);
+
+    // Content validation (hard fallback: ga fail entire generation, cuma flagged scene)
+    const contentValidation = validateContentRules(validatedScenes, categoryId);
+    if (!contentValidation.valid) {
+      // Log failure
+      validationFailureCounters[categoryId] = (validationFailureCounters[categoryId] || 0) + 1;
+      console.warn(`[Validation] Segment ${segmentIndex + 1} content validation failed for ${categoryId}:`, contentValidation.flaggedSceneIndices);
+
+      // Retry once if under retry limit
+      if (retryCount < 1) {
+        const delay = 1000 * Math.pow(2, retryCount);
+        console.warn(`Segment ${segmentIndex + 1} content invalid, retry ${retryCount + 1}/1 dalam ${delay}ms`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return generateSegment(
+          categoryId, topic, duration, segmentIndex, totalSegments,
+          globalOutline, previousSummary, affiliateInput, retryCount + 1, signal
+        );
+      }
+
+      // Hard fallback: mark scenes as flagged instead of throwing
+      const flaggedScenes = validatedScenes.map((scene, idx) => ({
+        ...scene,
+        flagged: contentValidation.flaggedSceneIndices.includes(idx),
+      }));
+      const summary = generateSegmentSummary(flaggedScenes, segmentIndex);
+      return { scenes: flaggedScenes, summary, hasValidationFlagged: true };
+    }
 
     // Generate summary of this segment for next segment's context
     const summary = generateSegmentSummary(validatedScenes, segmentIndex);
@@ -245,7 +296,7 @@ Format: teks biasa, 3-5 kalimat saja.`;
       { role: 'user', content: prompt },
     ],
     response_format: { type: 'text' },
-    temperature: 0.7,
+    temperature: config.temperature ?? 0.7,
     signal,
   });
 
@@ -264,12 +315,14 @@ export async function generateScript(
   onProgress?: (progress: GenerateScriptProgress) => void,
   signal?: AbortSignal
 ): Promise<{ scenes: Scene[]; failedSegment?: number }> {
-  // Cek cache dulu
-  const cacheKey = getCacheKey(categoryId, topic, duration, affiliateInput);
-  const cached = getFromCache(cacheKey);
-  if (cached) {
-    return cached;
-  }
+  // Cek cache — DINONAKTIFKAN untuk script generation agar setiap generate unik
+  // Jika ingin re-enable, uncomment baris di bawah dan pastikan cache key
+  // include randomization (hook angle / timestamp) agar user berbeda tidak dapat hasil identik.
+  // const cacheKey = getCacheKey(categoryId, topic, duration, affiliateInput);
+  // const cached = getFromCache(cacheKey);
+  // if (cached) {
+  //   return cached;
+  // }
 
   const durConfig = getDurationConfig(duration);
   const totalSegments = durConfig.segments;
@@ -314,7 +367,7 @@ export async function generateScript(
         error: error instanceof Error ? error.message : 'Unknown error',
       });
       const result = { scenes: allScenes, failedSegment: 1 };
-      setCache(cacheKey, result);
+      // setCache(cacheKey, result); // cache disabled
       return result;
     }
 
@@ -365,7 +418,7 @@ export async function generateScript(
             error: error instanceof Error ? error.message : 'Unknown error',
           });
           const failResult = { scenes: allScenes, failedSegment: segIndex };
-          setCache(cacheKey, failResult);
+          // setCache(cacheKey, failResult); // cache disabled
           return failResult;
         }
       }
@@ -378,7 +431,7 @@ export async function generateScript(
 
     onProgress?.({ status: 'done', message: 'Script selesai dibuat!' });
     const finalResult = { scenes: validatedScenes };
-    setCache(cacheKey, finalResult);
+    // setCache(cacheKey, finalResult); // cache disabled
     return finalResult;
   } catch (error) {
     onProgress?.({

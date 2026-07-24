@@ -13,6 +13,7 @@ export interface Scene {
   scene_mood: string;
   image_prompt: string;
   is_hook: boolean;
+  flagged?: boolean;
 }
 
 export interface ScriptOutput {
@@ -27,6 +28,13 @@ export interface CategoryConfig {
   rules: string;
   validMoods: Mood[];
   styleSuffix: string;
+  temperature?: number;
+  exampleScenes?: Array<{
+    narration: string;
+    scene_mood: string;
+    image_prompt?: string;
+  }>;
+  hookAngles?: string[];
 }
 
 export interface DurationConfig {

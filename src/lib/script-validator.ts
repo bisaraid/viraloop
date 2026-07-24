@@ -144,3 +144,57 @@ export function parseScriptJson(rawContent: string): { scenes: Scene[] } | null 
     return null;
   }
 }
+
+/**
+ * Content validation per category
+ */
+const AFFILIATE_DATA_PATTERNS = [
+  /\bRp\b/i,
+  /\b\d{1,3}(?:[.,]\d{3})*(?:[.,]\d+)?\b/,
+  /%|persen/i,
+  /\bkali\b/i,
+  /\brating\b/i,
+  /\bharga\b/i,
+  /\bdiskon\b/i,
+  /\bspesifikasi\b/i,
+];
+
+const HORROR_SENSORY_WORDS = [
+  'suara', 'bau', 'scent', 'bau', 'suhu', 'dingin', 'getaran', 'sentuh', 'rasa', 'hembusan', 'berdengkur',
+  'kuat', 'lembut', 'menghantui', 'mengerikan', 'menakutkan', 'keremangan', 'keramaian', 'sunyi', 'sepi',
+  'derit', 'rentak', 'detak', 'jantung', 'napas', 'bergerak', 'menggigil', 'dingin'
+];
+
+const DIALOG_PATTERN = /[""「」‘’“”]/;
+
+export function validateContentRules(scenes: Scene[], categoryId: string): { valid: boolean; flaggedSceneIndices: number[] } {
+  const flagged: number[] = [];
+  if (categoryId === 'affiliate') {
+    for (let i = 0; i < scenes.length; i++) {
+      const text = `${scenes[i].narration} ${scenes[i].image_prompt}`;
+      const hasData = AFFILIATE_DATA_PATTERNS.some(p => p.test(text));
+      if (!hasData) flagged.push(i);
+    }
+    return { valid: flagged.length === 0, flaggedSceneIndices: flagged };
+  }
+  if (categoryId === 'horror') {
+    for (let i = 0; i < scenes.length; i++) {
+      const text = `${scenes[i].narration} ${scenes[i].image_prompt}`;
+      const hasSensory = HORROR_SENSORY_WORDS.some(w => text.toLowerCase().includes(w));
+      if (!hasSensory) flagged.push(i);
+    }
+    return { valid: flagged.length === 0, flaggedSceneIndices: flagged };
+  }
+  if (categoryId === 'romance') {
+    for (let i = 0; i < scenes.length; i++) {
+      const text = `${scenes[i].narration} ${scenes[i].image_prompt}`;
+      const hasDialog = DIALOG_PATTERN.test(text);
+      if (!hasDialog) flagged.push(i);
+    }
+    return { valid: flagged.length === 0, flaggedSceneIndices: flagged };
+  }
+  return { valid: true, flaggedSceneIndices: [] };
+}
+
+/* validation failure counters (module-level) */
+export const validationFailureCounters: Record<string, number> = {};
