@@ -342,10 +342,10 @@ export default function Home() {
   // Data kategori untuk card grid
   const categoryCards = [
     { id: 'horror' as CategoryId, emoji: '👻', name: 'Horror', desc: 'Urban legend Indonesia' },
-    { id: 'psychology' as CategoryId, emoji: '🧠', name: 'Psikologi', desc: 'Fakta pikiran manusia' },
+    { id: 'psikologi' as CategoryId, emoji: '🧠', name: 'Psikologi', desc: 'Fakta pikiran manusia' },
     { id: 'romance' as CategoryId, emoji: '💕', name: 'Romance', desc: 'Cerita cinta sehari-hari' },
-    { id: 'motivation' as CategoryId, emoji: '🔥', name: 'Motivasi', desc: 'Inspirasi personal' },
-    { id: 'education' as CategoryId, emoji: '📚', name: 'Edukasi', desc: 'Fakta seru & unik' },
+    { id: 'motivasi' as CategoryId, emoji: '🔥', name: 'Motivasi', desc: 'Inspirasi personal' },
+    { id: 'edukasi' as CategoryId, emoji: '📚', name: 'Edukasi', desc: 'Fakta seru & unik' },
     { id: 'affiliate' as CategoryId, emoji: '🛒', name: 'Affiliate', desc: 'Review produk otomatis' },
   ];
 

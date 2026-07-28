@@ -1,4 +1,4 @@
-export type CategoryId = 'horror' | 'psychology' | 'romance' | 'motivation' | 'education' | 'affiliate';
+export type CategoryId = 'horror' | 'psikologi' | 'romance' | 'motivasi' | 'edukasi' | 'affiliate';
 
 export type DurationTier = 'short' | 'standard' | 'long';
 

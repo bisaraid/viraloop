@@ -8,10 +8,10 @@ import { affiliateConfig } from './affiliate';
 
 const categoryMap: Record<CategoryId, CategoryConfig> = {
   horror: horrorConfig,
-  psychology: psychologyConfig,
+  psikologi: psychologyConfig,
   romance: romanceConfig,
-  motivation: motivationConfig,
-  education: educationConfig,
+  motivasi: motivationConfig,
+  edukasi: educationConfig,
   affiliate: affiliateConfig,
 };
 

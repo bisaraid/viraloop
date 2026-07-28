@@ -1,7 +1,7 @@
 import { CategoryConfig } from '@/lib/types';
 
 export const psychologyConfig: CategoryConfig = {
-  id: 'psychology',
+  id: 'psikologi',
   name: 'Psychology',
   persona: 'Narator fakta yang bikin penonton mikir ulang, gaya "tau nggak sih"',
   storyStructure: 'Hook kontra-intuitif → 1-2 data/fakta pendukung → Penjelasan kenapa terjadi → Implikasi praktis untuk penonton',

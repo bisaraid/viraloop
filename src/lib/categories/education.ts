@@ -1,7 +1,7 @@
 import { CategoryConfig } from '@/lib/types';
 
 export const educationConfig: CategoryConfig = {
-  id: 'education',
+  id: 'edukasi',
   name: 'Education',
   persona: 'Teman yang excited berbagi fakta menarik, casual tapi akurat',
   storyStructure: '"Tau nggak sih" hook → Penjelasan inti → Analogi/contoh nyata → Takeaway singkat',

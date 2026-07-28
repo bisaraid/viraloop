@@ -8,10 +8,10 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const CATEGORY_NAMES: Record<string, string> = {
   horror: 'Horror',
-  psychology: 'Psychology',
+  psikologi: 'Psikologi',
   romance: 'Romance',
-  motivation: 'Motivation',
-  education: 'Education',
+  motivasi: 'Motivasi',
+  edukasi: 'Edukasi',
   affiliate: '',
 };
 

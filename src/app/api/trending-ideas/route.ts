@@ -16,10 +16,10 @@ const CACHE_TTL = 60 * 60 * 1000; // 1 jam
 
 const CATEGORY_QUERY_MAP: Record<string, string> = {
   horror: 'horor seram',
-  psychology: 'psikologi fakta unik',
+  psikologi: 'psikologi fakta unik',
   romance: 'romantis cerita cinta',
-  motivation: 'motivasi hidup sukses',
-  education: 'edukasi fakta menarik',
+  motivasi: 'motivasi hidup sukses',
+  edukasi: 'edukasi fakta menarik',
   affiliate: '',
 };
 

@@ -4,6 +4,7 @@ import { getDurationConfig } from '@/lib/duration';
 import { parseScriptJson, validateScriptScenes, validateContentRules, validationFailureCounters } from '@/lib/script-validator';
 import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress } from '@/lib/types';
 import { getOptionalEnvVar } from '@/lib/env';
+import { getTopHooks } from '@/lib/dynamicHooks';
 
 const MODEL = getOptionalEnvVar('GROQ_MODEL', 'llama-3.3-70b-versatile');
 
@@ -38,7 +39,7 @@ function setCache(key: string, data: { scenes: Scene[]; failedSegment?: number }
 /**
  * Build the system prompt for a given category
  */
-function buildSystemPrompt(categoryId: CategoryId): string {
+function buildSystemPrompt(categoryId: CategoryId, dynamicHookAngles: string[] = []): string {
   const config = getCategoryConfig(categoryId);
   let prompt = `Kamu adalah penulis script video pendek bahasa Indonesia. 
 Persona: ${config.persona}
@@ -87,9 +88,32 @@ Contoh di atas hanya referensi gaya dan struktur, BUKAN template yang harus diti
 Buat hook dan kalimat dengan struktur kalimat/kata pembuka yang BERBEDA dari semua contoh di atas. 
 Hindari pengulangan pola pembuka yang sama setiap generate.`;
 
+  // Hook angles: prioritaskan data crawl (dynamic), fallback ke statis
+  const hookPool: string[] = [];
+
+  // Static hookAngles dari file kategori (wajib ada sebagai fallback)
   if (config.hookAngles && config.hookAngles.length > 0) {
-    const selectedAngle = config.hookAngles[Math.floor(Math.random() * config.hookAngles.length)];
+    hookPool.push(...config.hookAngles);
+  }
+
+  // Dynamic hookAngles dari data crawl (top performing patterns)
+  if (dynamicHookAngles.length > 0) {
+    // Gabung static + dynamic, biasakan ke dynamic yang terbukti tinggi views
+    hookPool.push(...dynamicHookAngles);
+  }
+
+  if (hookPool.length > 0) {
+    const selectedAngle = hookPool[Math.floor(Math.random() * hookPool.length)];
     prompt += `\n\nHOOK ANGLE UNTUK GENERATE INI: ${selectedAngle}`;
+
+    // Kalau ada data dari crawl, kasih konteks tambahan
+    if (dynamicHookAngles.length > 0) {
+      prompt += `\n\nDATA POLA HOOK TERBUKTI (dari analisis ribuan video ${categoryId}):
+${dynamicHookAngles.join('\n')}
+
+Gunakan insight di atas sebagai referensi gaya hook yang TERBUKTI performa. 
+Namun tetap variasikan bahasa dan pendekatan agar tidak terdengar repetitif.`;
+    }
   }
 
   return prompt;
@@ -176,15 +200,17 @@ async function generateSegment(
   previousSummary: string,
   affiliateInput?: AffiliateInput,
   retryCount: number = 0,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  dynamicHookAngles: string[] = []
 ): Promise<{ scenes: Scene[]; summary: string; hasValidationFlagged?: boolean }> {
-  const systemPrompt = buildSystemPrompt(categoryId);
+  const systemPrompt = buildSystemPrompt(categoryId, dynamicHookAngles);
   const userPrompt = buildSegmentPrompt(
     categoryId, topic, duration, segmentIndex, totalSegments,
     globalOutline, previousSummary, affiliateInput
   );
 
   const config = getCategoryConfig(categoryId);
+
   try {
     const result = await aiCompletion({
       model: MODEL!,
@@ -329,6 +355,11 @@ export async function generateScript(
   const scenesPerSegment = Math.ceil(durConfig.targetScenes / totalSegments);
 
   try {
+    // Step 0: Ambil data dynamic hooks dari crawl (top performing patterns)
+    // Jika data belum cukup, akan return [] — fallback ke hookAngles statis
+    const dynamicHooks = await getTopHooks(categoryId);
+    const dynamicHookAngles = dynamicHooks.map(h => h.angle);
+
     // Step 1: Generate outline (sequential — wajib)
     onProgress?.({ status: 'generating_outline', message: 'Membuat outline cerita...' });
     const globalOutline = await generateOutline(categoryId, topic, affiliateInput, signal);
@@ -354,7 +385,7 @@ export async function generateScript(
     try {
       segment1 = await generateSegment(
         categoryId, topic, duration, 0, totalSegments,
-        globalOutline, '', affiliateInput, 0, signal
+        globalOutline, '', affiliateInput, 0, signal, dynamicHookAngles
       );
       allScenes.push(...segment1.scenes);
     } catch (error) {
@@ -390,7 +421,7 @@ export async function generateScript(
         segmentPromises.push(
           generateSegment(
             categoryId, topic, duration, i, totalSegments,
-            globalOutline, segment1.summary, affiliateInput, 0, signal
+            globalOutline, segment1.summary, affiliateInput, 0, signal, dynamicHookAngles
           ).then(result => ({ ...result, index: i }))
         );
       }

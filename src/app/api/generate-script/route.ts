@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate category
-    const validCategories: CategoryId[] = ['horror', 'psychology', 'romance', 'motivation', 'education', 'affiliate'];
+    const validCategories: CategoryId[] = ['horror', 'psikologi', 'romance', 'motivasi', 'edukasi', 'affiliate'];
     if (!validCategories.includes(category)) {
       return NextResponse.json(
         { success: false, error: `Kategori tidak valid. Pilihan: ${validCategories.join(', ')}` },

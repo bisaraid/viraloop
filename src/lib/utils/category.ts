@@ -4,10 +4,10 @@
 export function getCategoryEmoji(id: string): string {
   const map: Record<string, string> = {
     horror: '👻',
-    psychology: '🧠',
+    psikologi: '🧠',
     romance: '💕',
-    motivation: '🔥',
-    education: '📚',
+    motivasi: '🔥',
+    edukasi: '📚',
     affiliate: '🛍️',
   };
   return map[id] || '📝';

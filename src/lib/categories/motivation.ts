@@ -1,7 +1,7 @@
 import { CategoryConfig } from '@/lib/types';
 
 export const motivationConfig: CategoryConfig = {
-  id: 'motivation',
+  id: 'motivasi',
   name: 'Motivation',
   persona: 'Mentor yang bicara langsung ke penonton, tegas tapi suportif',
   storyStructure: 'Pain point yang relate → Reframe cara pandang → Insight/prinsip → 1 action step konkret',
