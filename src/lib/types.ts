@@ -8,6 +8,9 @@ export type Mood =
   | 'hangat' | 'sedih' | 'rindu' | 'netral'
   | 'semangat' | 'reflektif';
 
+/** Hook pattern type — cocok dengan pattern_insights.pattern_value untuk hook_type */
+export type HookPatternType = 'pertanyaan' | 'angka' | 'clickbait_kata' | 'netral';
+
 export interface Scene {
   narration: string;
   scene_mood: string;

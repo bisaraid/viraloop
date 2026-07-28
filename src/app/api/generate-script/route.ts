@@ -3,6 +3,7 @@ import { generateScript } from '@/lib/script-generator';
 import { CategoryId, DurationTier } from '@/lib/types';
 import { validateApiKey } from '@/lib/api-auth';
 import { checkRateLimit, getClientIp } from '@/lib/rate-limit';
+import { createServiceRoleClient } from '@/lib/supabase/service';
 
 export async function POST(request: NextRequest) {
   const ip = getClientIp(request);
@@ -91,6 +92,32 @@ export async function POST(request: NextRequest) {
       affiliateInput
     );
 
+    // Simpan ke script_generations (fire-and-forget — tidak blokir response)
+    if (result.scenes.length > 0) {
+      try {
+        const supabase = createServiceRoleClient();
+        // Cari category_id dari slug
+        const { data: catData } = await supabase
+          .from('content_categories')
+          .select('id')
+          .eq('slug', category)
+          .single();
+
+        if (catData) {
+          await supabase.from('script_generations').insert({
+            category_id: catData.id,
+            user_input: topic,
+            hook_pattern_used: result.hookPatternUsed ?? null,
+            final_script: JSON.stringify(result.scenes),
+            llm_provider: 'groq',
+          });
+        }
+      } catch (saveError) {
+        // Jangan gagalkan response jika gagal save — ini non-kritikal
+        console.warn('[generate-script] Gagal menyimpan ke script_generations:', saveError);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
@@ -98,6 +125,7 @@ export async function POST(request: NextRequest) {
         failedSegment: result.failedSegment ?? null,
         totalScenes: result.scenes.length,
         flaggedScenes: result.scenes.filter((s) => s.flagged).length,
+        hookPatternUsed: result.hookPatternUsed ?? null,
       },
     });
   } catch (error) {

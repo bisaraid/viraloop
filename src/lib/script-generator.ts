@@ -2,10 +2,21 @@ import { aiCompletion } from '@/lib/ai/completion';
 import { getCategoryConfig } from '@/lib/categories';
 import { getDurationConfig } from '@/lib/duration';
 import { parseScriptJson, validateScriptScenes, validateContentRules, validationFailureCounters } from '@/lib/script-validator';
-import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress } from '@/lib/types';
+import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress, HookPatternType } from '@/lib/types';
 import { getOptionalEnvVar } from '@/lib/env';
-import { getTopHooks } from '@/lib/dynamicHooks';
+import { getTopHooks, TopHookResult } from '@/lib/dynamicHooks';
+import { detectHookType } from '@/lib/pattern';
 import { fetchTrendingProduct, TrendingProduct } from '@/lib/trendtracker-client';
+
+/**
+ * Hook entry yang membawa teks hook + pattern_value (enum) sekaligus.
+ * Untuk dynamic hook: patternValue dari pattern_insights (pasti akurat).
+ * Untuk static hook: patternValue dideteksi via detectHookType() sekali di build time.
+ */
+interface HookEntry {
+  text: string;
+  patternValue: HookPatternType;
+}
 
 const MODEL = getOptionalEnvVar('GROQ_MODEL', 'llama-3.3-70b-versatile');
 
@@ -38,9 +49,19 @@ function setCache(key: string, data: { scenes: Scene[]; failedSegment?: number }
 }
 
 /**
- * Build the system prompt for a given category
+ * Build the system prompt for a given category.
+ * Returns the prompt string, the selected hook text, and its pattern_value enum.
+ *
+ * Design: Hook entries carry both text and pattern_value natively:
+ * - Dynamic hooks (from pattern_insights): patternValue already known from DB
+ * - Static hooks (from file categories): patternValue detected once via detectHookType()
+ *   at build time, not re-parsed at report time.
  */
-function buildSystemPrompt(categoryId: CategoryId, dynamicHookAngles: string[] = []): string {
+function buildSystemPrompt(
+  categoryId: CategoryId,
+  staticHookEntries: HookEntry[],
+  dynamicHookEntries: HookEntry[]
+): { prompt: string; selectedText: string | null; selectedPatternValue: HookPatternType | null } {
   const config = getCategoryConfig(categoryId);
   let prompt = `Kamu adalah penulis script video pendek bahasa Indonesia. 
 Persona: ${config.persona}
@@ -89,35 +110,30 @@ Contoh di atas hanya referensi gaya dan struktur, BUKAN template yang harus diti
 Buat hook dan kalimat dengan struktur kalimat/kata pembuka yang BERBEDA dari semua contoh di atas. 
 Hindari pengulangan pola pembuka yang sama setiap generate.`;
 
-  // Hook angles: prioritaskan data crawl (dynamic), fallback ke statis
-  const hookPool: string[] = [];
+  // Gabung static + dynamic hooks, biasakan ke dynamic yang terbukti tinggi views
+  const hookPool: HookEntry[] = [...staticHookEntries, ...dynamicHookEntries];
 
-  // Static hookAngles dari file kategori (wajib ada sebagai fallback)
-  if (config.hookAngles && config.hookAngles.length > 0) {
-    hookPool.push(...config.hookAngles);
-  }
-
-  // Dynamic hookAngles dari data crawl (top performing patterns)
-  if (dynamicHookAngles.length > 0) {
-    // Gabung static + dynamic, biasakan ke dynamic yang terbukti tinggi views
-    hookPool.push(...dynamicHookAngles);
-  }
+  let selectedText: string | null = null;
+  let selectedPatternValue: HookPatternType | null = null;
 
   if (hookPool.length > 0) {
-    const selectedAngle = hookPool[Math.floor(Math.random() * hookPool.length)];
-    prompt += `\n\nHOOK ANGLE UNTUK GENERATE INI: ${selectedAngle}`;
+    const selected = hookPool[Math.floor(Math.random() * hookPool.length)];
+    selectedText = selected.text;
+    selectedPatternValue = selected.patternValue;
+    prompt += `\n\nHOOK ANGLE UNTUK GENERATE INI: ${selectedText}`;
 
     // Kalau ada data dari crawl, kasih konteks tambahan
-    if (dynamicHookAngles.length > 0) {
+    if (dynamicHookEntries.length > 0) {
+      const dynamicTexts = dynamicHookEntries.map(h => h.text);
       prompt += `\n\nDATA POLA HOOK TERBUKTI (dari analisis ribuan video ${categoryId}):
-${dynamicHookAngles.join('\n')}
+${dynamicTexts.join('\n')}
 
 Gunakan insight di atas sebagai referensi gaya hook yang TERBUKTI performa. 
 Namun tetap variasikan bahasa dan pendekatan agar tidak terdengar repetitif.`;
     }
   }
 
-  return prompt;
+  return { prompt, selectedText, selectedPatternValue };
 }
 
 /**
@@ -217,10 +233,11 @@ async function generateSegment(
   affiliateInput?: AffiliateInput,
   retryCount: number = 0,
   signal?: AbortSignal,
-  dynamicHookAngles: string[] = [],
+  staticHookEntries: HookEntry[] = [],
+  dynamicHookEntries: HookEntry[] = [],
   trendingProduct?: TrendingProduct | null
-): Promise<{ scenes: Scene[]; summary: string; hasValidationFlagged?: boolean }> {
-  const systemPrompt = buildSystemPrompt(categoryId, dynamicHookAngles);
+): Promise<{ scenes: Scene[]; summary: string; hasValidationFlagged?: boolean; selectedText?: string | null; selectedPatternValue?: HookPatternType | null }> {
+  const { prompt: systemPrompt, selectedText, selectedPatternValue } = buildSystemPrompt(categoryId, staticHookEntries, dynamicHookEntries);
   const userPrompt = buildSegmentPrompt(
     categoryId, topic, duration, segmentIndex, totalSegments,
     globalOutline, previousSummary, affiliateInput, trendingProduct
@@ -272,13 +289,13 @@ async function generateSegment(
         flagged: contentValidation.flaggedSceneIndices.includes(idx),
       }));
       const summary = generateSegmentSummary(flaggedScenes, segmentIndex);
-      return { scenes: flaggedScenes, summary, hasValidationFlagged: true };
+      return { scenes: flaggedScenes, summary, hasValidationFlagged: true, selectedText, selectedPatternValue };
     }
 
     // Generate summary of this segment for next segment's context
     const summary = generateSegmentSummary(validatedScenes, segmentIndex);
 
-    return { scenes: validatedScenes, summary };
+    return { scenes: validatedScenes, summary, selectedText, selectedPatternValue };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw error; // Don't retry aborted requests
@@ -357,7 +374,7 @@ export async function generateScript(
   affiliateInput?: AffiliateInput,
   onProgress?: (progress: GenerateScriptProgress) => void,
   signal?: AbortSignal
-): Promise<{ scenes: Scene[]; failedSegment?: number }> {
+): Promise<{ scenes: Scene[]; failedSegment?: number; hookPatternUsed?: string }> {
   // Cek cache — DINONAKTIFKAN untuk script generation agar setiap generate unik
   // Jika ingin re-enable, uncomment baris di bawah dan pastikan cache key
   // include randomization (hook angle / timestamp) agar user berbeda tidak dapat hasil identik.
@@ -399,7 +416,20 @@ export async function generateScript(
     // Step 0: Ambil data dynamic hooks dari crawl (top performing patterns)
     // Jika data belum cukup, akan return [] — fallback ke hookAngles statis
     const dynamicHooks = await getTopHooks(categoryId);
-    const dynamicHookAngles = dynamicHooks.map(h => h.angle);
+
+    // Bangun HookEntry untuk static hooks (dari file kategori)
+    // patternValue dideteksi sekali via detectHookType(), bukan re-parse di report
+    const config = getCategoryConfig(categoryId);
+    const staticHookEntries: HookEntry[] = (config.hookAngles ?? []).map(text => ({
+      text,
+      patternValue: detectHookType(text),
+    }));
+
+    // Bangun HookEntry untuk dynamic hooks (dari pattern_insights — patternValue sudah pasti akurat)
+    const dynamicHookEntries: HookEntry[] = dynamicHooks.map(h => ({
+      text: h.angle,
+      patternValue: h.patternValue as HookPatternType,
+    }));
 
     // Step 1: Generate outline (sequential — wajib)
     onProgress?.({ status: 'generating_outline', message: 'Membuat outline cerita...' });
@@ -422,11 +452,12 @@ export async function generateScript(
       message: `Membuat bagian 1 dari ${totalSegments}...`,
     });
 
-    let segment1: { scenes: Scene[]; summary: string };
+    let segment1: { scenes: Scene[]; summary: string; selectedText?: string | null; selectedPatternValue?: HookPatternType | null };
     try {
       segment1 = await generateSegment(
         categoryId, topic, duration, 0, totalSegments,
-        globalOutline, '', affiliateInput, 0, signal, dynamicHookAngles, trendingProduct
+        globalOutline, '', affiliateInput, 0, signal,
+        staticHookEntries, dynamicHookEntries, trendingProduct
       );
       allScenes.push(...segment1.scenes);
     } catch (error) {
@@ -462,7 +493,8 @@ export async function generateScript(
         segmentPromises.push(
           generateSegment(
             categoryId, topic, duration, i, totalSegments,
-            globalOutline, segment1.summary, affiliateInput, 0, signal, dynamicHookAngles, trendingProduct
+            globalOutline, segment1.summary, affiliateInput, 0, signal,
+            staticHookEntries, dynamicHookEntries, trendingProduct
           ).then(result => ({ ...result, index: i }))
         );
       }
@@ -498,11 +530,14 @@ export async function generateScript(
 
     // Step 3: Final validation
     onProgress?.({ status: 'validating', message: 'Memvalidasi script...' });
-    const config = getCategoryConfig(categoryId);
     const validatedScenes = validateScriptScenes(allScenes, config);
 
     onProgress?.({ status: 'done', message: 'Script selesai dibuat!' });
-    const finalResult = { scenes: validatedScenes };
+    const finalResult: { scenes: Scene[]; hookPatternUsed?: string } = { scenes: validatedScenes };
+    if (segment1.selectedPatternValue) {
+      // Simpan pattern_value enum (bukan teks panjang) untuk query akurat di report
+      finalResult.hookPatternUsed = segment1.selectedPatternValue;
+    }
     // setCache(cacheKey, finalResult); // cache disabled
     return finalResult;
   } catch (error) {

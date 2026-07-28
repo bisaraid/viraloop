@@ -64,8 +64,10 @@ export interface SampleInput {
 /**
  * Deteksi hook_type dari title.
  * Urutan prioritas: pertanyaan > angka > clickbait_kata > netral
+ * 
+ * Diexport agar bisa dipakai untuk tagging static hookAngles di script-generator.
  */
-function detectHookType(title: string): PatternTags['hook_type'] {
+export function detectHookType(title: string): PatternTags['hook_type'] {
   const normalized = title.trim();
 
   // 1. Pertanyaan — mengandung tanda tanya (termasuk Unicode variant)
