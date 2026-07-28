@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+ import { NextRequest, NextResponse } from 'next/server';
 import { generateScript } from '@/lib/script-generator';
 import { CategoryId, DurationTier } from '@/lib/types';
 import { validateApiKey } from '@/lib/api-auth';
@@ -56,7 +56,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { category, topic, duration, affiliateInput } = body;
+    const { category, topic, duration, affiliateInput, nicheName } = body;
 
     // Validate required fields
     if (!category || !topic || !duration) {
@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate category
-    const validCategories: CategoryId[] = ['horror', 'psikologi', 'romance', 'motivasi', 'edukasi', 'affiliate'];
+    const validCategories: CategoryId[] = ['horror', 'psikologi', 'romance', 'motivasi', 'edukasi', 'affiliate', 'misteri', 'sejarah', 'keuangan', 'custom'];
     if (!validCategories.includes(category)) {
       return NextResponse.json(
         { success: false, error: `Kategori tidak valid. Pilihan: ${validCategories.join(', ')}` },
@@ -89,7 +89,10 @@ export async function POST(request: NextRequest) {
       category as CategoryId,
       topic,
       duration as DurationTier,
-      affiliateInput
+      affiliateInput,
+      undefined,
+      undefined,
+      nicheName
     );
 
     // Simpan ke script_generations (fire-and-forget — tidak blokir response)

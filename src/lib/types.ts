@@ -1,4 +1,4 @@
-export type CategoryId = 'horror' | 'psikologi' | 'romance' | 'motivasi' | 'edukasi' | 'affiliate';
+export type CategoryId = 'horror' | 'psikologi' | 'romance' | 'motivasi' | 'edukasi' | 'affiliate' | 'misteri' | 'sejarah' | 'keuangan' | 'custom';
 
 export type DurationTier = 'short' | 'standard' | 'long';
 
@@ -90,6 +90,7 @@ export interface GenerateScriptRequest {
   topic: string;
   duration: DurationTier;
   affiliateInput?: AffiliateInput;
+  nicheName?: string; // Untuk kategori custom
 }
 
 export interface GenerateTTSRequest {

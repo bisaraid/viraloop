@@ -19,6 +19,18 @@
     {
       "path": "/api/crawl/youtube?category=edukasi",
       "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/crawl/youtube?category=misteri",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/crawl/youtube?category=sejarah",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/crawl/youtube?category=keuangan",
+      "schedule": "0 4 * * *"
     }
   ]
 }

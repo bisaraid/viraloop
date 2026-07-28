@@ -1,5 +1,5 @@
 import { aiCompletion } from '@/lib/ai/completion';
-import { getCategoryConfig } from '@/lib/categories';
+import { getCategoryConfig, getCustomCategoryConfig } from '@/lib/categories';
 import { getDurationConfig } from '@/lib/duration';
 import { parseScriptJson, validateScriptScenes, validateContentRules, validationFailureCounters } from '@/lib/script-validator';
 import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress, HookPatternType } from '@/lib/types';
@@ -373,7 +373,8 @@ export async function generateScript(
   duration: DurationTier,
   affiliateInput?: AffiliateInput,
   onProgress?: (progress: GenerateScriptProgress) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  nicheName?: string
 ): Promise<{ scenes: Scene[]; failedSegment?: number; hookPatternUsed?: string }> {
   // Cek cache — DINONAKTIFKAN untuk script generation agar setiap generate unik
   // Jika ingin re-enable, uncomment baris di bawah dan pastikan cache key
@@ -413,13 +414,18 @@ export async function generateScript(
       }
     }
 
-    // Step 0: Ambil data dynamic hooks dari crawl (top performing patterns)
-    // Jika data belum cukup, akan return [] — fallback ke hookAngles statis
+    // Step 0: Untuk kategori custom, gunakan config dinamis dengan niche name
+    // Untuk kategori lain, gunakan config statis dari file kategori
+    const config = categoryId === 'custom' && nicheName
+      ? getCustomCategoryConfig(nicheName)
+      : getCategoryConfig(categoryId);
+
+    // Ambil data dynamic hooks dari crawl (top performing patterns)
+    // Untuk custom kategori, getTopHooks akan return [] karena tidak ada cron untuknya
     const dynamicHooks = await getTopHooks(categoryId);
 
     // Bangun HookEntry untuk static hooks (dari file kategori)
     // patternValue dideteksi sekali via detectHookType(), bukan re-parse di report
-    const config = getCategoryConfig(categoryId);
     const staticHookEntries: HookEntry[] = (config.hookAngles ?? []).map(text => ({
       text,
       patternValue: detectHookType(text),

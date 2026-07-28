@@ -7,5 +7,8 @@ insert into content_categories (slug, name) values
   ('romance', 'Romance'),
   ('motivasi', 'Motivasi'),
   ('edukasi', 'Edukasi'),
-  ('affiliate', 'Affiliate')
+  ('affiliate', 'Affiliate'),
+  ('misteri', 'Misteri & Konspirasi'),
+  ('sejarah', 'Sejarah'),
+  ('keuangan', 'Keuangan')
 on conflict (slug) do nothing;

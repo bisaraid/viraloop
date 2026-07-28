@@ -9,6 +9,10 @@ export function getCategoryEmoji(id: string): string {
     motivasi: '🔥',
     edukasi: '📚',
     affiliate: '🛍️',
+    misteri: '🔍',
+    sejarah: '🏛️',
+    keuangan: '💰',
+    custom: '✏️',
   };
   return map[id] || '📝';
 }

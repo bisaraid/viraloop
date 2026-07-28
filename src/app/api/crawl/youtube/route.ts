@@ -104,6 +104,24 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
     'edukasi sains seru',
     'fakta mengejutkan sains',
   ],
+  misteri: [
+    'misteri belum terpecahkan',
+    'teori konspirasi indonesia',
+    'fenomena aneh dunia',
+    'misteri sejarah yang belum terungkap',
+  ],
+  sejarah: [
+    'fakta sejarah tersembunyi',
+    'misteri sejarah dunia',
+    'sejarah indonesia yang jarang diketahui',
+    'peristiwa sejarah unik',
+  ],
+  keuangan: [
+    'tips keuangan pribadi',
+    'investasi untuk pemula',
+    'cara mengatur keuangan',
+    'edukasi finansial dasar',
+  ],
 };
 
 // ============================================================

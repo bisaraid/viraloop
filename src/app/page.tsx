@@ -10,6 +10,7 @@ export default function Home() {
   // Input state
   const [category, setCategory] = useState<CategoryId | ''>('');
   const [topic, setTopic] = useState('');
+  const [nicheName, setNicheName] = useState(''); // Untuk kategori custom
   const [duration, setDuration] = useState<DurationTier | ''>('');
   const [ideaMode, setIdeaMode] = useState<'manual' | 'trending'>('manual');
   const [ideasList, setIdeasList] = useState<string[]>([]);
@@ -111,7 +112,13 @@ export default function Home() {
       const response = await fetch('/api/generate-script', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, topic, duration, affiliateInput: affInput }),
+        body: JSON.stringify({
+          category,
+          topic,
+          duration,
+          affiliateInput: affInput,
+          nicheName: category === 'custom' ? nicheName : undefined,
+        }),
         signal: controller.signal,
       });
 
@@ -339,15 +346,19 @@ export default function Home() {
     return colors[mood] || '#888';
   };
 
-  // Data kategori untuk card grid
-  const categoryCards = [
+  // Data kategori untuk card grid — 9 preset + 1 custom terpisah
+  const presetCategoryCards = [
     { id: 'horror' as CategoryId, emoji: '👻', name: 'Horror', desc: 'Urban legend Indonesia' },
     { id: 'psikologi' as CategoryId, emoji: '🧠', name: 'Psikologi', desc: 'Fakta pikiran manusia' },
     { id: 'romance' as CategoryId, emoji: '💕', name: 'Romance', desc: 'Cerita cinta sehari-hari' },
     { id: 'motivasi' as CategoryId, emoji: '🔥', name: 'Motivasi', desc: 'Inspirasi personal' },
     { id: 'edukasi' as CategoryId, emoji: '📚', name: 'Edukasi', desc: 'Fakta seru & unik' },
     { id: 'affiliate' as CategoryId, emoji: '🛒', name: 'Affiliate', desc: 'Review produk otomatis' },
+    { id: 'misteri' as CategoryId, emoji: '🔍', name: 'Misteri', desc: 'Konspirasi & fenomena aneh' },
+    { id: 'sejarah' as CategoryId, emoji: '🏛️', name: 'Sejarah', desc: 'Fakta sejarah tersembunyi' },
+    { id: 'keuangan' as CategoryId, emoji: '💰', name: 'Keuangan', desc: 'Tips finansial pribadi' },
   ];
+  const customCategoryCard = { id: 'custom' as CategoryId, emoji: '✏️', name: 'Custom', desc: 'Niche/topik bebas' };
 
   return (
     <div className="space-y-6">
@@ -359,11 +370,11 @@ export default function Home() {
           <p className="text-sm text-[var(--muted-foreground)]">Pilih kategori, masukkan ide, langsung generate.</p>
         </div>
 
-        {/* Kategori — grid card 2x3, disabled jika sudah ada hasil */}
+        {/* Kategori — grid 3x3 preset, disabled jika sudah ada hasil */}
         <div>
           <label className="label">Kategori Konten</label>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {categoryCards.map((card) => {
+            {presetCategoryCards.map((card) => {
               const isSelected = category === card.id;
               return (
                 <button
@@ -388,6 +399,29 @@ export default function Home() {
               );
             })}
           </div>
+
+          {/* Separator + Custom card — terpisah dari grid 3x3 biar center */}
+          <div className="relative flex items-center gap-3 my-3">
+            <div className="flex-1 border-t border-[var(--border)]" />
+            <span className="text-xs text-[var(--muted-foreground)]">atau</span>
+            <div className="flex-1 border-t border-[var(--border)]" />
+          </div>
+
+          <button
+            disabled={hasResult}
+            onClick={() => { setCategory(customCategoryCard.id); setScenes([]); setAudioUrl(null); }}
+            className={`w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 border-dashed transition-all text-center
+              ${category === customCategoryCard.id
+                ? 'border-[var(--primary)] bg-[var(--primary)]/10'
+                : 'border-[var(--border)] hover:border-[var(--primary)]/50 bg-[var(--card-bg)]'
+              }
+              ${hasResult ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+            `}
+          >
+            <span className="text-lg">{customCategoryCard.emoji}</span>
+            <span className="text-sm font-semibold">{customCategoryCard.name}</span>
+            <span className="text-[11px] text-[var(--muted-foreground)]">{customCategoryCard.desc}</span>
+          </button>
         </div>
 
         {/* Form yang muncul setelah kategori dipilih — smooth appear */}
@@ -485,6 +519,23 @@ export default function Home() {
             </div>
           )}
 
+
+          {/* Custom kategori — input nama niche */}
+          {category === 'custom' && (
+            <div>
+              <label className="label">Nama Niche / Topik Kamu</label>
+              <input
+                className="input-field"
+                disabled={hasResult}
+                placeholder="Contoh: Kuliner Nusantara, Parenting, Teknologi..."
+                value={nicheName}
+                onChange={(e) => setNicheName(e.target.value)}
+              />
+              <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                Tentukan niche spesifik untuk konten kamu. Misalnya: "Kuliner Nusantara", "Parenting", "Review Film", dll.
+              </p>
+            </div>
+          )}
 
           {/* Affiliate form — cukup paste URL, sisanya otomatis */}
           {isAffiliate && (
