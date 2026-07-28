@@ -31,6 +31,10 @@
     {
       "path": "/api/crawl/youtube?category=keuangan",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/generate-trending-suggestions",
+      "schedule": "0 5 * * *"
     }
   ]
 }
