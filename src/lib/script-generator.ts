@@ -108,7 +108,9 @@ Mood: ${ex.scene_mood}`;
   prompt += `\n\nATURAN PENTING UNTUK VARIASI:
 Contoh di atas hanya referensi gaya dan struktur, BUKAN template yang harus ditiru persis. 
 Buat hook dan kalimat dengan struktur kalimat/kata pembuka yang BERBEDA dari semua contoh di atas. 
-Hindari pengulangan pola pembuka yang sama setiap generate.`;
+Hindari pengulangan pola pembuka yang sama setiap generate.
+
+JANGAN menciptakan karakter/tokoh fiksi (nama orang) kecuali contoh referensi di atas ATAU struktur cerita kategori ini secara eksplisit menggunakan karakter. Kalau tidak ada karakter di contoh, sampaikan konten secara langsung/informatif tanpa protagonis rekaan.`;
 
   // Gabung static + dynamic hooks, biasakan ke dynamic yang terbukti tinggi views
   const hookPool: HookEntry[] = [...staticHookEntries, ...dynamicHookEntries];
@@ -538,8 +540,24 @@ export async function generateScript(
     onProgress?.({ status: 'validating', message: 'Memvalidasi script...' });
     const validatedScenes = validateScriptScenes(allScenes, config);
 
+    // ===== PROGRAMMATIC DISCLAIMER: Keuangan =====
+    // Disclaimer wajib untuk kategori keuangan — APPEND sebagai scene terakhir
+    // (tidak tergantung LLM compliance, dijamin selalu ada)
+    let finalScenes = validatedScenes;
+    if (categoryId === 'keuangan') {
+      finalScenes = [
+        ...validatedScenes,
+        {
+          narration: 'Penting untuk diingat: konten ini hanya bersifat edukatif dan informatif, bukan merupakan saran investasi atau rekomendasi finansial. Setiap keputusan investasi memiliki risiko. Selalu lakukan riset mandiri dan konsultasikan dengan penasihat keuangan profesional sebelum mengambil keputusan investasi.',
+          scene_mood: 'netral',
+          image_prompt: 'Disclaimer text overlay on calm gradient background, professional and clean design, neutral colors, informative style',
+          is_hook: false,
+        },
+      ];
+    }
+
     onProgress?.({ status: 'done', message: 'Script selesai dibuat!' });
-    const finalResult: { scenes: Scene[]; hookPatternUsed?: string } = { scenes: validatedScenes };
+    const finalResult: { scenes: Scene[]; hookPatternUsed?: string } = { scenes: finalScenes };
     if (segment1.selectedPatternValue) {
       // Simpan pattern_value enum (bukan teks panjang) untuk query akurat di report
       finalResult.hookPatternUsed = segment1.selectedPatternValue;

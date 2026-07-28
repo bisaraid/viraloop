@@ -264,30 +264,28 @@ export default function Home() {
       setIdeasList([]);
       return;
     }
-    if (ideaMode === 'manual' || ideaMode === 'trending') {
+    if (ideaMode === 'manual') {
       setIdeasList([]);
       return;
     }
 
+    // Mode trending: fetch dari API
     let cancelled = false;
     setIsLoadingIdeas(true);
     setIdeasList([]);
+    setTrendingFailed(false);
 
     const timer = setTimeout(() => {
       const fetchIdeas = async () => {
         try {
-          // Jika mode trending, coba trending dulu
-          if (ideaMode === 'trending') {
-            const res1 = await fetch(`/api/trending-ideas?category=${encodeURIComponent(category)}`);
-            const d1 = await res1.json();
-            console.log('[Ideas] Trending response:', d1);
-            if (!cancelled && d1.success && Array.isArray(d1.ideas) && d1.ideas.length > 0) {
-              console.log('[Ideas] Setting ideasList from trending:', d1.ideas);
-              setIdeasList(d1.ideas);
-              setIsLoadingIdeas(false);
-              return;
-            }
-            console.log('[Ideas] Trending gagal');
+          const res = await fetch(`/api/trending-ideas?category=${encodeURIComponent(category)}`);
+          const data = await res.json();
+          console.log('[Ideas] Trending response:', data);
+          if (!cancelled && data.success && Array.isArray(data.ideas) && data.ideas.length > 0) {
+            console.log('[Ideas] Setting ideasList from trending:', data.ideas);
+            setIdeasList(data.ideas);
+            setIsLoadingIdeas(false);
+            return;
           }
           if (!cancelled) {
             setTrendingFailed(true);
@@ -295,7 +293,10 @@ export default function Home() {
           }
         } catch (e) {
           console.error('Gagal fetch ideas:', e);
-          if (!cancelled) setIdeasList([]);
+          if (!cancelled) {
+            setTrendingFailed(true);
+            setIdeasList([]);
+          }
         } finally {
           if (!cancelled) setIsLoadingIdeas(false);
         }
@@ -380,7 +381,7 @@ export default function Home() {
                 <button
                   key={card.id}
                   disabled={hasResult}
-                  onClick={() => { setCategory(card.id as CategoryId); setScenes([]); setAudioUrl(null); }}
+                  onClick={() => { setCategory(card.id as CategoryId); setIdeaMode('manual'); setIdeasList([]); setSelectedIdea(null); setTrendingFailed(false); setTopic(''); setScenes([]); setAudioUrl(null); }}
                   className={`relative flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all text-center
                     ${isSelected
                       ? 'border-[var(--primary)] bg-[var(--primary)]/10'
@@ -409,7 +410,7 @@ export default function Home() {
 
           <button
             disabled={hasResult}
-            onClick={() => { setCategory(customCategoryCard.id); setScenes([]); setAudioUrl(null); }}
+            onClick={() => { setCategory(customCategoryCard.id); setIdeaMode('manual'); setIdeasList([]); setSelectedIdea(null); setTrendingFailed(false); setTopic(''); setScenes([]); setAudioUrl(null); }}
             className={`w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 border-dashed transition-all text-center
               ${category === customCategoryCard.id
                 ? 'border-[var(--primary)] bg-[var(--primary)]/10'
@@ -439,12 +440,13 @@ export default function Home() {
                   onClick={() => { setIdeaMode('manual'); setSelectedIdea(null); }}>
                   ✏️ Manual
                 </button>
-                {/* Trending dinonaktifkan sementara */}
-                <button className={`btn-secondary text-xs flex-1 ${ideaMode === 'trending' ? '!border-[var(--primary)]' : ''}`}
-                  disabled={true}
-                  onClick={() => { setIdeaMode('trending'); setSelectedIdea(null); setTopic(''); setTrendingFailed(false); }}>
-                  📈 Trending (Segera)
-                </button>
+                {category !== 'custom' && (
+                  <button className={`btn-secondary text-xs flex-1 ${ideaMode === 'trending' ? '!border-[var(--primary)]' : ''}`}
+                    disabled={hasResult}
+                    onClick={() => { setIdeaMode('trending'); setSelectedIdea(null); setTopic(''); setTrendingFailed(false); setIdeasList([]); }}>
+                    📈 Trending
+                  </button>
+                )}
               </div>
 
               {/* Mode Manual: input teks langsung */}
@@ -494,8 +496,8 @@ export default function Home() {
 
                   {/* Error */}
                   {!isLoadingIdeas && trendingFailed && (
-                    <p className="text-xs text-red-400">
-                      Trending tidak tersedia, gunakan Manual.
+                    <p className="text-xs text-yellow-400 bg-yellow-900/20 p-2 rounded-lg border border-yellow-800">
+                      Belum ada data trending untuk kategori ini, coba lagi nanti.
                     </p>
                   )}
 
