@@ -29,9 +29,9 @@ async function main() {
 
   const topic = 'mengapa manusia suka procrastinate';
   const tests = [
-    { category: 'psychology' as const, run: 1 },
-    { category: 'psychology' as const, run: 2 },
-    { category: 'psychology' as const, run: 3 },
+    { category: 'psikologi' as const, run: 1 },
+    { category: 'psikologi' as const, run: 2 },
+    { category: 'psikologi' as const, run: 3 },
   ];
 
   const results: any[] = [];
@@ -54,7 +54,7 @@ async function main() {
     console.log(`Finished run ${t.run} in ${Date.now() - start}ms`);
   }
 
-  console.log('\n=== VARIATION DEMO RESULTS (Psychology) ===');
+  console.log('\n=== VARIATION DEMO RESULTS (Psikologi) ===');
   console.table(results);
   console.log('\nValidation Failure Counters:', JSON.stringify(validationFailureCounters));
 }
