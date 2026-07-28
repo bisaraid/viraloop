@@ -22,6 +22,7 @@ const OPTIONAL_VARS = [
   'GOOGLE_CSE_ID',
   'GOOGLE_CSE_API_KEY',
   'BROWSERLESS_API_KEY',
+  'TRENDTRACKER_API_URL',
 ] as const;
 
 function validateEnv(): void {

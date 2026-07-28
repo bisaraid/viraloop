@@ -5,6 +5,7 @@ import { parseScriptJson, validateScriptScenes, validateContentRules, validation
 import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress } from '@/lib/types';
 import { getOptionalEnvVar } from '@/lib/env';
 import { getTopHooks } from '@/lib/dynamicHooks';
+import { fetchTrendingProduct, TrendingProduct } from '@/lib/trendtracker-client';
 
 const MODEL = getOptionalEnvVar('GROQ_MODEL', 'llama-3.3-70b-versatile');
 
@@ -130,12 +131,27 @@ function buildSegmentPrompt(
   totalSegments: number,
   globalOutline: string,
   previousSummary: string,
-  affiliateInput?: AffiliateInput
+  affiliateInput?: AffiliateInput,
+  trendingProduct?: TrendingProduct | null
 ): string {
   const durConfig = getDurationConfig(duration);
   const scenesPerSegment = Math.ceil(durConfig.targetScenes / totalSegments);
 
   let prompt = '';
+
+  // Konteks trending product dari TrendTracker (hanya untuk affiliate)
+  const trendingContext = (categoryId === 'affiliate' && trendingProduct) ? `
+DATA TREN PASARAN (dari TrendTracker — produk ini benar-benar sedang trending):
+Nama Produk: ${trendingProduct.name}
+${trendingProduct.category ? `Kategori: ${trendingProduct.category}` : ''}
+${trendingProduct.description ? `Deskripsi: ${trendingProduct.description}` : ''}
+${trendingProduct.price ? `Harga: ${trendingProduct.price}` : ''}
+${trendingProduct.rating ? `Rating: ${trendingProduct.rating}/5` : ''}
+${trendingProduct.commission_score !== undefined ? `Skor Komisi: ${trendingProduct.commission_score}` : ''}
+${trendingProduct.trend_growth_score !== undefined ? `Skor Pertumbuhan Tren: ${trendingProduct.trend_growth_score}` : ''}
+
+PENTING: Produk di atas adalah produk yang BENAR-BENAR SEDANG TRENDING di pasaran saat ini. 
+Gunakan data ini sebagai referensi utama dalam review. Jangan mengarang data yang tidak ada.` : '';
 
   if (segmentIndex === 0) {
     // First segment: generate first scenes using the global outline
@@ -159,7 +175,7 @@ ${!affiliateInput.reviews || affiliateInput.reviews.length === 0 ? `
 PENTING: Buat 2-3 ulasan pengguna fiktif yang REALISTIS berdasarkan fitur deskripsi dan harga produk di atas. Ulasan harus terdengar seperti pembeli sungguhan, dengan gaya bahasa Indonesia sehari-hari.` : ''}
 
 INGAT: Hanya gunakan informasi yang ada di data di atas. Jangan tambahkan klaim atau spesifikasi yang tidak disebutkan user.` : ''}
-
+${trendingContext}
 Buat scene-scene pertama sesuai outline di atas. Scene pertama (is_hook: true) harus hook yang kuat.`;
   } else {
     // Subsequent segments: use outline + previous summary for continuity
@@ -201,12 +217,13 @@ async function generateSegment(
   affiliateInput?: AffiliateInput,
   retryCount: number = 0,
   signal?: AbortSignal,
-  dynamicHookAngles: string[] = []
+  dynamicHookAngles: string[] = [],
+  trendingProduct?: TrendingProduct | null
 ): Promise<{ scenes: Scene[]; summary: string; hasValidationFlagged?: boolean }> {
   const systemPrompt = buildSystemPrompt(categoryId, dynamicHookAngles);
   const userPrompt = buildSegmentPrompt(
     categoryId, topic, duration, segmentIndex, totalSegments,
-    globalOutline, previousSummary, affiliateInput
+    globalOutline, previousSummary, affiliateInput, trendingProduct
   );
 
   const config = getCategoryConfig(categoryId);
@@ -355,6 +372,30 @@ export async function generateScript(
   const scenesPerSegment = Math.ceil(durConfig.targetScenes / totalSegments);
 
   try {
+    // Step -1: Untuk affiliate, ambil data trending product dari TrendTracker
+    // Fallback: kalau API down/timeout, trendingProduct = null (mode lama)
+    let trendingProduct: TrendingProduct | null = null;
+    if (categoryId === 'affiliate') {
+      try {
+        // Cari trending product berdasarkan topic user (keyword match)
+        trendingProduct = await fetchTrendingProduct(topic);
+        if (trendingProduct) {
+          console.log(`[TrendTracker] Got trending product: ${trendingProduct.name} (match: "${topic}")`);
+        } else {
+          console.log('[TrendTracker] No trending product found for topic, will use random from top 5');
+          // Coba random — fetchTrendingProduct(topic) already falls back to random if no match
+          trendingProduct = await fetchTrendingProduct(undefined);
+          if (trendingProduct) {
+            console.log(`[TrendTracker] Fallback random product: ${trendingProduct.name}`);
+          }
+        }
+      } catch (error) {
+        // Graceful fallback: jangan sampai error TrendTracker mengganggu fitur lain
+        console.warn('[TrendTracker] Failed to fetch trending product — using legacy mode');
+        trendingProduct = null;
+      }
+    }
+
     // Step 0: Ambil data dynamic hooks dari crawl (top performing patterns)
     // Jika data belum cukup, akan return [] — fallback ke hookAngles statis
     const dynamicHooks = await getTopHooks(categoryId);
@@ -385,7 +426,7 @@ export async function generateScript(
     try {
       segment1 = await generateSegment(
         categoryId, topic, duration, 0, totalSegments,
-        globalOutline, '', affiliateInput, 0, signal, dynamicHookAngles
+        globalOutline, '', affiliateInput, 0, signal, dynamicHookAngles, trendingProduct
       );
       allScenes.push(...segment1.scenes);
     } catch (error) {
@@ -421,7 +462,7 @@ export async function generateScript(
         segmentPromises.push(
           generateSegment(
             categoryId, topic, duration, i, totalSegments,
-            globalOutline, segment1.summary, affiliateInput, 0, signal, dynamicHookAngles
+            globalOutline, segment1.summary, affiliateInput, 0, signal, dynamicHookAngles, trendingProduct
           ).then(result => ({ ...result, index: i }))
         );
       }
