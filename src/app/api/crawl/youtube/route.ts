@@ -4,14 +4,30 @@
  * Memanggil YouTube Data API v3 untuk mengambil video trending per kategori,
  * lalu menyimpannya ke tabel content_samples.
  *
- * Endpoint: POST /api/crawl/youtube
- * Auth: Bearer token (API_SECRET_KEY)
+ * DUAL ENDPOINT (satu file route, dua method HTTP):
+ *   POST /api/crawl/youtube?category=xxx
+ *     → Manual trigger / testing (curl, Postman)
+ *     → Auth: Bearer API_SECRET_KEY
+ *
+ *   GET /api/crawl/youtube?category=xxx
+ *     → Vercel Cron Jobs (otomatis terjadwal)
+ *     → Auth: Bearer CRON_SECRET
+ *     → Vercel Cron HANYA mengirim GET, bukan POST
+ *       (lihat: https://vercel.com/docs/cron-jobs)
+ *
+ * Vercel Cron Config (vercel.json):
+ *   - horror   @ 06:00 UTC (13:00 WIB)
+ *   - psikologi @ 10:00 UTC (17:00 WIB)
+ *   - romance   @ 14:00 UTC (21:00 WIB)
+ *   - motivasi  @ 18:00 UTC (01:00 WIB)
+ *   - edukasi   @ 22:00 UTC (05:00 WIB)
  *
  * Strategi hemat quota:
  * - 1 kategori per panggilan (parameter ?category=horror)
  * - search.list = 100 quota, videos.list = 1 quota per video (batch)
  * - Total ~150 quota per kategori per hari
- * - Maks 1x/hari per kategori (dijaga oleh caller/cron)
+ * - Maks 1x/hari per kategori (dijaga oleh cron schedule)
+ * - 5 kategori × 150 = ~750 quota/hari dari total 10.000/hari
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -201,8 +217,12 @@ async function getVideoDetails(videoIds: string[]): Promise<YouTubeVideoItem[]> 
 }
 
 // ============================================================
-// AUTH: BEARER TOKEN
+// AUTH: BEARER TOKEN (dual-mode)
 // ============================================================
+// Menerima 2 jenis token:
+//   1. API_SECRET_KEY — untuk manual trigger / testing
+//   2. CRON_SECRET — untuk Vercel Cron otomatis
+// Jika keduanya tidak diset, auth dilewati (development mode).
 
 function validateBearerToken(request: NextRequest): { valid: boolean; error?: string } {
   const authHeader = request.headers.get('authorization');
@@ -217,14 +237,20 @@ function validateBearerToken(request: NextRequest): { valid: boolean; error?: st
   }
 
   const token = parts[1];
-  const expectedToken = process.env.API_SECRET_KEY;
+  const apiSecretKey = process.env.API_SECRET_KEY;
+  const cronSecret = process.env.CRON_SECRET;
 
-  if (!expectedToken) {
-    console.warn('⚠️ API_SECRET_KEY tidak diset — autentikasi Bearer dilewati');
+  // Jika kedua env var tidak diset, skip auth (development mode)
+  if (!apiSecretKey && !cronSecret) {
+    console.warn('⚠️ API_SECRET_KEY dan CRON_SECRET tidak diset — autentikasi Bearer dilewati');
     return { valid: true };
   }
 
-  if (token !== expectedToken) {
+  // Cek apakah token cocok dengan salah satu secret
+  const isValidApiKey = apiSecretKey ? token === apiSecretKey : false;
+  const isValidCronKey = cronSecret ? token === cronSecret : false;
+
+  if (!isValidApiKey && !isValidCronKey) {
     return { valid: false, error: 'Bearer token tidak valid' };
   }
 
@@ -232,10 +258,10 @@ function validateBearerToken(request: NextRequest): { valid: boolean; error?: st
 }
 
 // ============================================================
-// MAIN HANDLER
+// SHARED CRAWL LOGIC (dipanggil oleh POST dan GET)
 // ============================================================
 
-export async function POST(request: NextRequest) {
+async function handleCrawlRequest(request: NextRequest, source: 'manual' | 'cron') {
   const ip = getClientIp(request);
   const startTime = Date.now();
 
@@ -326,7 +352,7 @@ export async function POST(request: NextRequest) {
     const categoryId = categoryData.id;
 
     // ===== CRAWL YOUTUBE =====
-    console.log(`[YouTubeCrawl] Mulai crawl kategori "${category}" (${keywords.length} keyword)`);
+    console.log(`[YouTubeCrawl] [${source}] Mulai crawl kategori "${category}" (${keywords.length} keyword)`);
 
     const allVideoIds: string[] = [];
     const searchResults: Array<{
@@ -340,7 +366,7 @@ export async function POST(request: NextRequest) {
     const keywordsToUse = keywords.slice(0, 2);
 
     for (const keyword of keywordsToUse) {
-      console.log(`[YouTubeCrawl] Search keyword: "${keyword}"`);
+      console.log(`[YouTubeCrawl] [${source}] Search keyword: "${keyword}"`);
       const items = await searchYouTubeVideos(keyword, 50);
 
       for (const item of items) {
@@ -359,11 +385,11 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      // Jeda kecil antar keyword untuk避免 rate limit
+      // Jeda kecil antar keyword untuk menghindari rate limit
       await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    console.log(`[YouTubeCrawl] Ditemukan ${searchResults.length} video unik, mengambil detail...`);
+    console.log(`[YouTubeCrawl] [${source}] Ditemukan ${searchResults.length} video unik, mengambil detail...`);
 
     // ===== AMBIL DETAIL VIDEO (statistics + duration) =====
     const videoDetails = await getVideoDetails(allVideoIds);
@@ -418,7 +444,7 @@ export async function POST(request: NextRequest) {
         if (insertError.code === '23505') {
           skippedCount++;
         } else {
-          console.warn(`[YouTubeCrawl] Gagal insert video ${result.videoId}:`, insertError.message);
+          console.warn(`[YouTubeCrawl] [${source}] Gagal insert video ${result.videoId}:`, insertError.message);
           skippedCount++;
         }
       } else {
@@ -429,7 +455,7 @@ export async function POST(request: NextRequest) {
     const elapsed = Date.now() - startTime;
 
     console.log(
-      `[YouTubeCrawl] ✅ Selesai: ${insertedCount} inserted, ${skippedCount} skipped (${elapsed}ms)`
+      `[YouTubeCrawl] [${source}] ✅ Selesai: ${insertedCount} inserted, ${skippedCount} skipped (${elapsed}ms)`
     );
 
     return NextResponse.json({
@@ -441,10 +467,11 @@ export async function POST(request: NextRequest) {
         inserted: insertedCount,
         skipped: skippedCount,
         elapsedMs: elapsed,
+        source,
       },
     });
   } catch (error) {
-    console.error('[YouTubeCrawl] Error:', error);
+    console.error(`[YouTubeCrawl] [${source}] Error:`, error);
     return NextResponse.json(
       {
         success: false,
@@ -453,4 +480,25 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// ============================================================
+// HANDLER: POST — untuk manual trigger / testing (curl, Postman)
+// ============================================================
+// Tetap dipertahankan seperti semula agar tidak breaking change.
+// Auth: Bearer API_SECRET_KEY
+
+export async function POST(request: NextRequest) {
+  return handleCrawlRequest(request, 'manual');
+}
+
+// ============================================================
+// HANDLER: GET — untuk Vercel Cron Jobs (otomatis terjadwal)
+// ============================================================
+// Vercel Cron hanya mengirim GET request, bukan POST.
+// Auth: Bearer CRON_SECRET (dikirim otomatis oleh Vercel infra)
+// Lihat: https://vercel.com/docs/cron-jobs
+
+export async function GET(request: NextRequest) {
+  return handleCrawlRequest(request, 'cron');
 }
