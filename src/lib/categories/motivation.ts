@@ -9,6 +9,7 @@ export const motivationConfig: CategoryConfig = {
   validMoods: ['intens', 'terang', 'semangat', 'reflektif', 'netral'],
   styleSuffix: ', bold modern illustration, dynamic lighting, motivational atmosphere, high contrast',
   temperature: 0.75,
+  usesFictionalCharacter: false,
   exampleScenes: [
     {
       narration: 'Kamu nggak gagal. Kamu cuma lagi Belajar versi yang lebih susah. Coba satu hal kecil hari ini: buka catatan yang selama ini kamu tunda selama 10 menit aja.',

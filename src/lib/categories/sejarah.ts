@@ -9,6 +9,7 @@ export const sejarahConfig: CategoryConfig = {
   validMoods: ['intens', 'fakta', 'terang', 'shock', 'netral', 'misterius'],
   styleSuffix: ', epic historical illustration style, dramatic lighting, vintage color palette, cinematic period atmosphere, indonesian historical setting',
   temperature: 0.7,
+  usesFictionalCharacter: false,
   exampleScenes: [
     {
       narration: 'Tau nggak sih? Indonesia punya perjanjian rahasia yang hampir mengubah peta dunia. Tahun 1824, Belanda dan Inggris bagi-bagi wilayah kayak bagi kue—tanpa ngomong ke kerajaan-kerajaan Nusantara. Akibatnya? Satu pulau terbelah dua, dan kita masih rasain dampaknya sampai sekarang.',

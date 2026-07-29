@@ -9,6 +9,7 @@ export const horrorConfig: CategoryConfig = {
   validMoods: ['misterius', 'mencekam', 'gelap', 'intens', 'shock', 'sunyi', 'lega'],
   styleSuffix: ', dark horror illustration, eerie atmosphere, cinematic lighting, muted dark colors, indonesian rural setting',
   temperature: 0.8,
+  usesFictionalCharacter: true,
   exampleScenes: [
     {
       narration: 'Jam dinding berdentum keras. Suara langkah kaki dari loteng—berat, lambat. Bau menyengat seperti gas bocor menyusup dari celah kunci. Dia sadar: pintu kamarnya sekarang terkunci dari luar.',

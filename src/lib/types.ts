@@ -38,6 +38,10 @@ export interface CategoryConfig {
     image_prompt?: string;
   }>;
   hookAngles?: string[];
+  /** Apakah kategori ini menggunakan karakter/tokoh fiksi dalam kontennya?
+   *  false = konten informatif langsung (keuangan, edukasi) — LLM dilarang membuat nama karakter
+   *  true = konten berbasis cerita/karakter (horror, romance, misteri, dll) — LLM boleh membuat karakter */
+  usesFictionalCharacter?: boolean;
 }
 
 export interface DurationConfig {

@@ -9,6 +9,7 @@ export const misteriConfig: CategoryConfig = {
   validMoods: ['misterius', 'intens', 'gelap', 'shock', 'netral', 'fakta'],
   styleSuffix: ', mysterious investigative illustration, dark atmospheric lighting, cinematic conspiracy aesthetic, shadowy figures, indonesian setting',
   temperature: 0.75,
+  usesFictionalCharacter: true,
   exampleScenes: [
     {
       narration: 'Ada satu pulau di Indonesia yang bikin para ilmuwan bingung. Bukan karena monsternya—tapi karena nggak ada satu pun teori yang bisa menjelaskan kenapa ratusan orang menghilang di sana dalam 10 tahun terakhir. Polisi? Mereka menolak datang.',

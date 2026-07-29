@@ -9,6 +9,7 @@ export const romanceConfig: CategoryConfig = {
   validMoods: ['hangat', 'sedih', 'intens', 'lega', 'rindu', 'netral'],
   styleSuffix: ', warm cinematic illustration, soft romantic lighting, pastel color palette, emotional atmosphere',
   temperature: 0.75,
+  usesFictionalCharacter: true,
   exampleScenes: [
     {
       narration: 'Dia berkata, "Aku nggak bisa menunggu selamanya." Jawabanku pendek, diam sepersekian detik: "Aku juga nggak mau. Tapi untukmu? Aku tunggu." Dadanya terasa sesak, seolah nyaris tak bisa menarik napas.',

@@ -9,6 +9,7 @@ export const educationConfig: CategoryConfig = {
   validMoods: ['terang', 'fakta', 'intens', 'shock', 'netral'],
   styleSuffix: ', friendly educational illustration, bright colors, clean modern style, engaging',
   temperature: 0.55,
+  usesFictionalCharacter: false,
   exampleScenes: [
     {
       narration: 'Tau nggak sih? Otakmu cuma butuh 21 hari untuk kebiasaan baru. Bayangkan kamu lagi install aplikasi—ulang 21 kali, lalu auto-run. Mulai dari 1 push-up saja.',

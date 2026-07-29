@@ -9,6 +9,7 @@ export const psychologyConfig: CategoryConfig = {
   validMoods: ['fakta', 'intens', 'terang', 'misterius', 'shock'],
   styleSuffix: ', clean modern illustration, bright educational style, minimalist, soft lighting',
   temperature: 0.55,
+  usesFictionalCharacter: true,
   exampleScenes: [
     {
       narration: 'Tau nggak sih? 94% orang lebih takut berbicara di depan umum daripada mati. Alasannya? Ketakutan sosial lebih memaksa karena kita takut dihakimi, bukan ketakutan fisik.',

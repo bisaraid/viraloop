@@ -69,9 +69,12 @@ Persona: ${config.persona}
 STRUKTUR CERITA:
 ${config.storyStructure}
 
-ATURAN:
-${config.rules}
-
+${config.rules ? `ATURAN:\n${config.rules}\n` : ''}
+${categoryId === 'sejarah'
+  ? 'ATURAN WAJIB: Kategori ini adalah konten SEJARAH FAKTUAL. BOLEH menyebut tokoh SEJARAH ASLI yang benar-benar ada (seperti Gajah Mada, Hayam Wuruk, Cut Nyak Dien, dll). DILARANG KERAS mengarang KARAKTER FIKSI BARU (nama rekaan seperti "Rina", "Budi", dst yang tidak ada dalam catatan sejarah). DILARANG membuat subplot/cerita personal fiktif. Sampaikan konten berdasarkan fakta sejarah.\n'
+: config.usesFictionalCharacter === false
+  ? `ATURAN WAJIB: Kategori ini adalah konten INFORMATIF/TIPS LANGSUNG, BUKAN cerita fiksi. DILARANG KERAS membuat nama karakter (seperti 'Rina', 'Budi', dst), DILARANG membuat subplot/cerita personal apapun. Sampaikan SEMUA poin secara langsung ke pemirsa menggunakan kata 'kamu' atau 'guys', TANPA tokoh perantara.\n`
+  : 'Kategori ini MENGGUNAKAN karakter/tokoh fiksi. Wajib membuat tokoh dengan nama dan latar yang jelas untuk mendukung cerita.\n'}
 MOOD VALID (hanya gunakan mood dari daftar ini):
 ${config.validMoods.join(', ')}
 

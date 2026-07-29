@@ -9,6 +9,7 @@ export const keuanganConfig: CategoryConfig = {
   validMoods: ['terang', 'fakta', 'intens', 'semangat', 'netral', 'reflektif'],
   styleSuffix: ', clean modern financial illustration style, bright professional lighting, money and growth symbols, minimalist indonesian design',
   temperature: 0.65,
+  usesFictionalCharacter: false,
   exampleScenes: [
     {
       narration: 'Kebiasaan finansial nomor 1 yang bikin gaji habis sebelum akhir bulan? Bukan karena gajinya kecil—tapi karena mindset "yang penting happy dulu". Solusinya? Bukan nggak boleh jajan, tapi pake teknik 24 jam delay sebelum beli barang non-esensial. Disclaimer: ini bukan saran finansial, hanya edukasi kebiasaan belanja.',

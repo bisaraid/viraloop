@@ -9,6 +9,7 @@ export const affiliateConfig: CategoryConfig = {
   validMoods: ['terang', 'intens', 'fakta', 'semangat', 'netral'],
   styleSuffix: ', clean product photography style, bright commercial lighting, modern minimalist background',
   temperature: 0.5,
+  usesFictionalCharacter: false,
   exampleScenes: [
     {
       narration: '3 dari 4 reviewer sebut baterai tahan 12 jam. Yang kurang? Kamera belum sejauh brand lain. Tapi kalau butuh HP murah tangguh, ini worth it. Link di bio buat lihat harga.',
