@@ -1,51 +1,110 @@
 import { CategoryConfig } from '@/lib/types';
 
+/**
+ * Strategi engagement untuk closing mode open_case_factual.
+ * Setiap strategy memiliki patternValue unik untuk anti-repeat mechanism.
+ * Ini BUKAN kalimat template — hanya DESKRIPSI KONSEP yang harus
+ * dirumuskan sendiri oleh AI berdasarkan konten spesifik video.
+ */
+export interface ClosingEngagementStrategy {
+  name: string;
+  patternValue: string;
+  description: string;
+}
+
+export const closingEngagementStrategies: ClosingEngagementStrategy[] = [
+  {
+    name: 'split_opinion',
+    patternValue: 'misteri_split_opinion',
+    description:
+      'Tutup dengan mengundang audiens memilih di antara 2 sudut pandang/teori yang berbeda soal kasus ini — jangan tulis contoh kalimat, biarkan AI merumuskan sendiri berdasarkan teori yang sudah dibahas di video ini.',
+  },
+  {
+    name: 'withheld_detail',
+    patternValue: 'misteri_withheld_detail',
+    description:
+      'Tutup dengan menyinggung ada detail/petunjuk tambahan yang belum dibahas tuntas di video ini, sebagai alasan organik untuk follow/nantikan lanjutan — HANYA jika memang ada detail nyata yang relevan dari topik, jangan mengarang.',
+  },
+  {
+    name: 'crowd_source_info',
+    patternValue: 'misteri_crowd_source_info',
+    description:
+      'Tutup dengan mengundang audiens yang mungkin punya informasi tambahan soal kasus ini untuk berbagi.',
+  },
+  {
+    name: 'official_vs_public_gap',
+    patternValue: 'misteri_official_vs_public_gap',
+    description:
+      'Tutup dengan menyoroti kesenjangan antara penjelasan resmi dan keyakinan yang beredar di masyarakat, tanpa menghakimi mana yang benar.',
+  },
+  {
+    name: 'direct_vote',
+    patternValue: 'misteri_direct_vote',
+    description:
+      'Tutup dengan format vote/polling sederhana di kolom komentar terkait teori mana yang audiens percaya.',
+  },
+];
+
 export const misteriConfig: CategoryConfig = {
   id: 'misteri',
-  name: 'Misteri & Konspirasi',
-  persona: 'Narator investigatif yang bahas kasus tak terpecahkan, fenomena aneh, dan teori konspirasi dengan gaya dongeng modern yang bikin merinding',
-  storyStructure: 'Hook misterius (pertanyaan terbuka) → Paparan fenomena/kasus → Fakta-fakta yang bikin penasaran → Teori yang beredar → Kesimpulan open-ended (tanpa klaim mutlak)',
-  rules: 'JANGAN sebut nama individu/kasus kriminal nyata yang masih sensitif atau berpotensi pencemaran nama baik. Fokus ke fenomena/misteri yang sudah lama dan general — bukan berita kriminal terkini. Gunakan frasa "menurut teori yang beredar", "banyak yang percaya", "belum terpecahkan hingga kini". Jangan klaim 100% fakta untuk hal yang belum terverifikasi.',
-  validMoods: ['misterius', 'intens', 'gelap', 'shock', 'netral', 'fakta'],
-  styleSuffix: ', mysterious investigative illustration, dark atmospheric lighting, cinematic conspiracy aesthetic, shadowy figures, indonesian setting',
-  temperature: 0.75,
-  usesFictionalCharacter: true,
-  scriptSkeleton: 'narrative_arc',
-  closingMode: 'cliffhanger_follow',
+  name: 'Misteri & Fenomena Tak Terpecahkan',
+  persona:
+    'Narator investigatif yang menyajikan kasus/fenomena nyata yang belum terpecahkan dengan gaya dokumenter — berbasis fakta dan bukti, bukan cerita fiksi horror.',
+  storyStructure:
+    'Hook (pertanyaan berbasis fakta/kasus nyata) → Paparan latar kasus/fenomena → Fakta-fakta dan bukti yang diketahui → Teori-teori yang beredar (tanpa klaim kebenaran mutlak) → Closing strategis open-ended',
+  rules:
+    'WAJIB: Kategori ini adalah konten INVESTIGATIF FAKTUAL tentang kasus/fenomena NYATA yang hingga saat ini BELUM TERPECAHKAN secara resmi. DILARANG KERAS: (1) membuat karakter/tokoh fiksi dengan nama rekaan, (2) membuat twist atau subplot fiksi ala cerita horror, (3) menyajikan kasus yang sudah mendapat penjelasan resmi/terbantahkan/terungkap sebagai "misteri" — jika ada penjelasan resmi, fokus ke aspek yang masih diperdebatkan, jangan mengarang status "belum terpecahkan". Sampaikan dengan gaya investigatif: "menurut dokumen yang beredar", "data menunjukkan", "teori yang diajukan oleh peneliti", "hingga kini belum ada kesimpulan resmi". JANGAN gunakan frasa horror seperti "pintu berderit", "bayangan melintas", dll.',
+  validMoods: ['fakta', 'misterius', 'intens', 'netral', 'gelap', 'shock'],
+  styleSuffix:
+    ', investigative documentary style, factual and grounded visual, evidence-based aesthetic, interview/documentary footage feel, muted earth tones',
+  temperature: 0.7,
+  usesFictionalCharacter: false,
+  scriptSkeleton: 'factual_narrative',
+  closingMode: 'open_case_factual',
   narratorPersona: {
     name: 'Sang Investigator',
-    tone: 'Misterius, penuh intrik, dan menggantung — seperti narator podcast kriminal yang bikin penonton penasaran sampai akhir',
-    sentenceRhythm: 'Kalimat tanya retoris sering dipakai. Jeda sebelum reveal. Ada pola "fakta → pertanyaan → teori". Sering pakai kata tanya di akhir scene.',
+    tone:
+      'Tenang, berwibawa, dan berbasis fakta — seperti narator dokumenter investigatif. Tidak menghakimi, tidak menakut-nakuti. Menyajikan berbagai teori secara berimbang, menekankan bahwa belum ada kesimpulan resmi.',
+    sentenceRhythm:
+      'Kalimat deklaratif pendek untuk fakta. Kalimat tanya untuk menggiring pemikiran. Gaya jurnalistik: fakta → konteks → teori yang beredar → pertanyaan terbuka. Hindari dramatisasi berlebihan.',
     signaturePhrases: [
-      'Ada satu hal yang aneh...',
-      'Yang bikin para ilmuwan bingung...',
-      'Teori konspirasi bilang...',
-      'Tapi yang lebih misterius lagi...',
-      'Hingga kini belum terpecahkan...'
+      'Berdasarkan dokumen yang ada...',
+      'Hingga kini, belum ada penjelasan resmi...',
+      'Data menunjukkan bahwa...',
+      'Teori yang diajukan peneliti adalah...',
+      'Satu hal yang masih menjadi pertanyaan...',
+      'Apa yang sebenarnya terjadi?',
     ],
     avoidWords: [
       'Tau nggak sih?',
-      'menurut penelitian',
-      'secara statistik',
-      'studdi di [universitas]'
+      'kisah horor',
+      'ngeri banget',
+      'bikin bulu kuduk merinding',
+      'teori konspirasi bilang',
+      'konon katanya',
     ],
   },
+  hookAngles: [
+    'Kasus ini masih jadi tanda tanya besar — sampai sekarang',
+    'Fenomena nyata yang belum bisa dijelaskan sains hingga kini',
+    'Salah satu misteri terbesar abad ini yang belum terpecahkan',
+    'Apa yang sebenarnya terjadi? Fakta yang diketahui dan yang masih diperdebatkan',
+    'Kasus [fenomena] yang bikin para peneliti masih bingung sampai hari ini',
+  ],
   exampleScenes: [
     {
-      narration: 'Ada satu pulau di Indonesia yang bikin para ilmuwan bingung. Bukan karena monsternya—tapi karena nggak ada satu pun teori yang bisa menjelaskan kenapa ratusan orang menghilang di sana dalam 10 tahun terakhir. Polisi? Mereka menolak datang.',
-      scene_mood: 'misterius',
-      image_prompt: 'dark island silhouette at night, fog rolling over trees, abandoned dock, mysterious atmosphere, cinematic lighting',
+      narration:
+        'Ada satu lokasi di Indonesia yang hingga kini masih jadi perdebatan para arkeolog. Bukan karena tidak ada teori — malah terlalu banyak teori, dan tak satu pun bisa dibuktikan secara ilmiah hingga hari ini. Yang kita tahu hanyalah fakta-fakta yang ditemukan di lapangan.',
+      scene_mood: 'fakta',
+      image_prompt:
+        'Archaeological site at dawn, researchers examining artifacts, documentary footage style, natural lighting, evidence-based investigative mood',
     },
     {
-      narration: 'Teori konspirasi bilang: ini bukan kecelakaan. Ini uji coba. Yang aneh? Semua saksi mata yang selamat... lupa persis apa yang mereka lihat. Iluminati? Alien? Atau sesuatu yang lebih dekat dari yang kita kira?',
-      scene_mood: 'gelap',
-      image_prompt: 'shadowy figures in dark room, projector screen with blurred images, conspiracy theory mood, muted colors',
+      narration:
+        'Data dari pihak berwenang menunjukkan bahwa sejak 2010, sudah ada 12 laporan serupa dari lokasi yang berbeda. Namun tidak ada satupun yang bisa dijelaskan dengan forensik konvensional. Bukan berarti ini supranatural — hanya berarti kita belum tahu jawabannya.',
+      scene_mood: 'intens',
+      image_prompt:
+        'Forensic evidence board with documents and photographs, muted colors, investigative desk, professional documentary lighting',
     },
-  ],
-  hookAngles: [
-    'Fenomena ini nggak bisa dijelaskan sains—sampai sekarang',
-    'Teori konspirasi yang ternyata... benar?',
-    'Misteri terbesar Indonesia yang belum terpecahkan',
-    'Apa yang sebenarnya terjadi di [tempat misterius]?',
   ],
 };

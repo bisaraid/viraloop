@@ -8,6 +8,7 @@ import { getTopHooks } from '@/lib/dynamicHooks';
 import { detectHookType } from '@/lib/pattern';
 import { fetchTrendingProduct, TrendingProduct } from '@/lib/trendtracker-client';
 import { getUsedHookPatternValues, selectHookWithAntiRepeat, recordUsage } from '@/lib/usage-history';
+import { closingEngagementStrategies, type ClosingEngagementStrategy } from '@/lib/categories/misteri';
 
 /**
  * Hook entry yang membawa teks hook + pattern_value (enum) sekaligus.
@@ -72,14 +73,17 @@ function resolveConfig(categoryId: CategoryId, config?: CategoryConfig): Categor
  * Build the system prompt for a given category.
  * Menerima config opsional — jika diberikan, dipakai langsung (tanpa via getCategoryConfig)
  * sehingga custom category tidak akan kena placeholder.
+ *
+ * Return type diperluas untuk menyertakan closing strategy yang terpilih (untuk misteri).
  */
 function buildSystemPrompt(
   categoryId: CategoryId,
   staticHookEntries: HookEntry[],
   dynamicHookEntries: HookEntry[],
   usedPatternValues: Set<string>,
+  usedClosingPatternValues: Set<string>,
   explicitConfig?: CategoryConfig
-): { prompt: string; selectedText: string | null; selectedPatternValue: HookPatternType | null } {
+): { prompt: string; selectedText: string | null; selectedPatternValue: HookPatternType | null; selectedClosingStrategy: ClosingEngagementStrategy | null } {
   const config = resolveConfig(categoryId, explicitConfig);
   const skeleton = getScriptSkeleton(config);
   const persona = config.narratorPersona;
@@ -104,6 +108,29 @@ CLOSING WAJIB: Scene TERAKHIR dari naskah HARUS berisi SATU poin kesimpulan konk
   } else if (config.closingMode === 'cliffhanger_follow') {
     prompt += `
 CLOSING WAJIB: Scene TERAKHIR dari naskah HARUS meninggalkan elemen emosional yang BELUM TERSELESAIKAN — pertanyaan menggantung, ketegangan yang belum reda, atau momen yang bikin penonton penasaran. Sertakan ajakan IMPLISIT untuk follow (misalnya "ikutin cerita selanjutnya" atau "follow biar nggak ketinggalan") tanpa terdengar seperti iklan murahan. Jaga agar tetap natural dalam alur cerita.`;
+  } else if (config.closingMode === 'open_case_factual') {
+    // Pilih closing engagement strategy dengan anti-repeat mechanism
+    let selectedClosingStrategy: ClosingEngagementStrategy | null = null;
+    if (closingEngagementStrategies.length > 0) {
+      selectedClosingStrategy = selectHookWithAntiRepeat(closingEngagementStrategies, usedClosingPatternValues);
+    }
+
+    prompt += `
+CLOSING WAJIB: Scene TERAKHIR dari naskah adalah penutup OPEN-ENDED yang mendorong engagement audiens — BUKAN kesimpulan mutlak, BUKAN cliffhanger fiksi.
+
+STRATEGI CLOSING UNTUK VIDEO INI:
+${selectedClosingStrategy ? selectedClosingStrategy.description : 'Tutup dengan pertanyaan terbuka yang mendorong diskusi di kolom komentar.'}
+
+INSTRUKSI:
+- Rumuskan closing dengan kalimat ORIGINAL milikmu sendiri berdasarkan strategi di atas dan konten spesifik video ini.
+- JANGAN memakai kalimat template generik, JANGAN mengulang frasa yang sudah lazim dipakai di closing sebelumnya.
+- Closing harus natural dan kontekstual dengan kasus/fenomena yang dibahas, bukan tempelan.
+
+ATURAN ANTI-KASUS-USANG:
+- JANGAN sajikan kasus ini sebagai misteri jika sebenarnya sudah ada penjelasan resmi/terbukti/terbantahkan.
+- Jika ragu status terkini suatu kasus, fokus ke aspek yang memang masih diperdebatkan, jangan mengarang status "belum terpecahkan" untuk kasus yang sudah selesai.`;
+
+    return { prompt, selectedText: null, selectedPatternValue: null, selectedClosingStrategy };
   }
 
   // Branching: instruksi berdasarkan scriptSkeleton
@@ -113,7 +140,7 @@ Kategori ini MENGGUNAKAN alur CERITA FIKSI dengan karakter/tokoh. Wajib membuat 
 `;
   } else if (skeleton === 'factual_narrative') {
     prompt += `
-ATURAN WAJIB: Kategori ini adalah konten SEJARAH FAKTUAL. BOLEH menyebut tokoh SEJARAH ASLI yang benar-benar ada (seperti Gajah Mada, Hayam Wuruk, Cut Nyak Dien, dll). DILARANG KERAS mengarang KARAKTER FIKSI BARU (nama rekaan seperti "Rina", "Budi", dst yang tidak ada dalam catatan sejarah). DILARANG membuat subplot/cerita personal fiktif. Sampaikan konten berdasarkan fakta sejarah secara kronologis.
+ATURAN WAJIB: Kategori ini adalah konten FAKTUAL berbasis kronologi kejadian/fenomena nyata. BOLEH menyebut tokoh SEJARAH ASLI atau pihak-pihak nyata yang terkait. DILARANG KERAS mengarang KARAKTER FIKSI BARU (nama rekaan seperti "Rina", "Budi", dst yang tidak ada dalam catatan/fakta). DILARANG membuat subplot/cerita personal fiktif. Sampaikan konten berdasarkan fakta secara kronologis.
 `;
   } else if (skeleton === 'informational_arc') {
     prompt += `
@@ -186,7 +213,7 @@ Namun tetap variasikan bahasa dan pendekatan agar tidak terdengar repetitif.`;
     }
   }
 
-  return { prompt, selectedText, selectedPatternValue };
+  return { prompt, selectedText, selectedPatternValue, selectedClosingStrategy: null };
 }
 
 /**
@@ -277,9 +304,9 @@ Lanjutkan ke poin/langkah berikutnya dari outline di atas. Penting:
     } else {
       // Untuk narrative_arc dan factual_narrative: kontinuitas alur
       const continuityInstruction = skeleton === 'factual_narrative'
-        ? `Lanjutkan kronologi sejarah dari outline di atas. Pastikan:
+        ? `Lanjutkan kronologi faktual dari outline di atas. Pastikan:
 - Kronologi waktu akurat dan berurutan
-- Tokoh sejarah KONSISTEN dengan catatan sejarah
+- Tokoh/entitas KONSISTEN dengan fakta yang sudah disampaikan
 - Jangan membuat karakter fiksi baru
 - Alur faktual dan kronologis, jangan membuat twist dramatis yang tidak berdasarkan fakta`
         : `Lanjutkan cerita dari outline global di atas. Pastikan:
@@ -327,10 +354,11 @@ async function generateSegment(
   dynamicHookEntries: HookEntry[] = [],
   trendingProduct?: TrendingProduct | null,
   usedPatternValues: Set<string> = new Set(),
+  usedClosingPatternValues: Set<string> = new Set(),
   explicitConfig?: CategoryConfig
-): Promise<{ scenes: Scene[]; summary: string; hasValidationFlagged?: boolean; selectedText?: string | null; selectedPatternValue?: HookPatternType | null }> {
+): Promise<{ scenes: Scene[]; summary: string; hasValidationFlagged?: boolean; selectedText?: string | null; selectedPatternValue?: HookPatternType | null; selectedClosingStrategy?: ClosingEngagementStrategy | null }> {
   const config = resolveConfig(categoryId, explicitConfig);
-  const { prompt: systemPrompt, selectedText, selectedPatternValue } = buildSystemPrompt(categoryId, staticHookEntries, dynamicHookEntries, usedPatternValues, explicitConfig);
+  const { prompt: systemPrompt, selectedText, selectedPatternValue, selectedClosingStrategy } = buildSystemPrompt(categoryId, staticHookEntries, dynamicHookEntries, usedPatternValues, usedClosingPatternValues, explicitConfig);
   const userPrompt = buildSegmentPrompt(
     categoryId, topic, duration, segmentIndex, totalSegments,
     globalOutline, previousSummary, affiliateInput, trendingProduct, explicitConfig
@@ -371,7 +399,7 @@ async function generateSegment(
         return generateSegment(
           categoryId, topic, duration, segmentIndex, totalSegments,
           globalOutline, previousSummary, affiliateInput, retryCount + 1, signal,
-          staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, explicitConfig
+          staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, usedClosingPatternValues, explicitConfig
         );
       }
 
@@ -400,7 +428,7 @@ async function generateSegment(
       return generateSegment(
         categoryId, topic, duration, segmentIndex, totalSegments,
         globalOutline, previousSummary, affiliateInput, retryCount + 1, signal,
-        staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, explicitConfig
+        staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, usedClosingPatternValues, explicitConfig
       );
     }
     throw error;
@@ -453,7 +481,7 @@ Outline harus mencakup:
 
 Format: teks biasa, 3-5 poin saja. Setiap poin dalam 1 kalimat jelas.`;
   } else if (skeleton === 'factual_narrative') {
-    prompt = `Buat outline 3-5 kalimat untuk konten sejarah dengan topik: "${topic}"
+    prompt = `Buat outline 3-5 kalimat untuk konten ${config.name} dengan topik: "${topic}"
 
 ${categoryId === 'affiliate' && affiliateInput ? `
 DATA PRODUK:
@@ -467,7 +495,7 @@ Outline harus mencakup:
 - Dampak peristiwa tersebut ke masa kini
 - Mood dominan
 
-Format: teks biasa, 3-5 kalimat saja. Kronologis berdasarkan fakta sejarah.`;
+Format: teks biasa, 3-5 kalimat saja. Kronologis berdasarkan fakta.`;
   } else {
     // narrative_arc (default untuk horror, misteri, romance)
     prompt = `Buat outline 3-5 kalimat untuk cerita ${categoryId === 'affiliate' ? 'review produk' : categoryId} dengan topik: "${topic}"
@@ -598,12 +626,17 @@ export async function generateScript(
       message: `Membuat bagian 1 dari ${totalSegments}...`,
     });
 
+    // Query usage_history untuk anti-repeat closing strategy (scope terpisah dari hook)
+    const usedClosingPatternValues: Set<string> = identityKey
+      ? await getUsedHookPatternValues(identityKey, 'misteri_closing')
+      : new Set<string>();
+
     let segment1: { scenes: Scene[]; summary: string; selectedText?: string | null; selectedPatternValue?: HookPatternType | null };
     try {
       segment1 = await generateSegment(
         categoryId, topic, duration, 0, totalSegments,
         globalOutline, '', affiliateInput, 0, signal,
-        staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, explicitConfig
+        staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, usedClosingPatternValues, explicitConfig
       );
       allScenes.push(...segment1.scenes);
     } catch (error) {
@@ -638,7 +671,7 @@ export async function generateScript(
           generateSegment(
             categoryId, topic, duration, i, totalSegments,
             globalOutline, segment1.summary, affiliateInput, 0, signal,
-            staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, explicitConfig
+            staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, usedClosingPatternValues, explicitConfig
           ).then(result => ({ ...result, index: i }))
         );
       }

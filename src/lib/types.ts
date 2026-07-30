@@ -13,8 +13,8 @@ export type HookPatternType = 'pertanyaan' | 'angka' | 'clickbait_kata' | 'netra
 
 /**
  * Tipe skeleton alur konten:
- * - narrative_arc: alur cerita fiksi dengan tokoh, konflik, twist (horror, misteri, romance)
- * - factual_narrative: kronologi kejadian nyata tanpa tokoh fiksi (sejarah)
+ * - narrative_arc: alur cerita fiksi dengan tokoh, konflik, twist (horror)
+ * - factual_narrative: kronologi kejadian nyata tanpa tokoh fiksi (sejarah, misteri)
  * - informational_arc: poin-poin informatif yang berdiri sendiri, bukan kelanjutan dramatis (psikologi, motivasi, edukasi, keuangan, affiliate)
  */
 export type ScriptSkeleton = 'narrative_arc' | 'factual_narrative' | 'informational_arc';
@@ -23,8 +23,9 @@ export type ScriptSkeleton = 'narrative_arc' | 'factual_narrative' | 'informatio
  * Mode penutup naskah:
  * - actionable_takeaway: scene terakhir berisi satu poin kesimpulan konkret yang bisa langsung dipraktikkan
  * - cliffhanger_follow: scene terakhir berisi elemen emosional belum terselesaikan + ajakan implisit follow
+ * - open_case_factual: scene terakhir mengundang engagement strategis untuk kasus/fenomena nyata yang belum terpecahkan
  */
-export type ClosingMode = 'actionable_takeaway' | 'cliffhanger_follow';
+export type ClosingMode = 'actionable_takeaway' | 'cliffhanger_follow' | 'open_case_factual';
 
 export interface NarratorPersona {
   name: string;
@@ -64,8 +65,8 @@ export interface CategoryConfig {
   }>;
   hookAngles?: string[];
   /** Apakah kategori ini menggunakan karakter/tokoh fiksi dalam kontennya?
-   *  false = konten informatif langsung (keuangan, edukasi) — LLM dilarang membuat nama karakter
-   *  true = konten berbasis cerita/karakter (horror, romance, misteri, dll) — LLM boleh membuat karakter */
+   *  false = konten informatif langsung (keuangan, edukasi, misteri) — LLM dilarang membuat nama karakter
+   *  true = konten berbasis cerita/karakter (horror, romance) — LLM boleh membuat karakter */
   usesFictionalCharacter?: boolean;
   /** Bentuk alur konten — membedakan cara AI menyusun outline dan segmen */
   scriptSkeleton: ScriptSkeleton;
