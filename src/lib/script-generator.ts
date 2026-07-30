@@ -7,6 +7,7 @@ import { getOptionalEnvVar } from '@/lib/env';
 import { getTopHooks } from '@/lib/dynamicHooks';
 import { detectHookType } from '@/lib/pattern';
 import { fetchTrendingProduct, TrendingProduct } from '@/lib/trendtracker-client';
+import { getUsedHookPatternValues, selectHookWithAntiRepeat, recordUsage } from '@/lib/usage-history';
 
 /**
  * Hook entry yang membawa teks hook + pattern_value (enum) sekaligus.
@@ -76,6 +77,7 @@ function buildSystemPrompt(
   categoryId: CategoryId,
   staticHookEntries: HookEntry[],
   dynamicHookEntries: HookEntry[],
+  usedPatternValues: Set<string>,
   explicitConfig?: CategoryConfig
 ): { prompt: string; selectedText: string | null; selectedPatternValue: HookPatternType | null } {
   const config = resolveConfig(categoryId, explicitConfig);
@@ -167,7 +169,8 @@ JANGAN menciptakan karakter/tokoh fiksi (nama orang) kecuali contoh referensi di
   let selectedPatternValue: HookPatternType | null = null;
 
   if (hookPool.length > 0) {
-    const selected = hookPool[Math.floor(Math.random() * hookPool.length)];
+    // Pilih hook dengan anti-repeat: hindari patternValue yang sudah dipakai user sebelumnya
+    const selected = selectHookWithAntiRepeat(hookPool, usedPatternValues);
     selectedText = selected.text;
     selectedPatternValue = selected.patternValue;
     prompt += `\n\nHOOK ANGLE UNTUK GENERATE INI: ${selectedText}`;
@@ -323,10 +326,11 @@ async function generateSegment(
   staticHookEntries: HookEntry[] = [],
   dynamicHookEntries: HookEntry[] = [],
   trendingProduct?: TrendingProduct | null,
+  usedPatternValues: Set<string> = new Set(),
   explicitConfig?: CategoryConfig
 ): Promise<{ scenes: Scene[]; summary: string; hasValidationFlagged?: boolean; selectedText?: string | null; selectedPatternValue?: HookPatternType | null }> {
   const config = resolveConfig(categoryId, explicitConfig);
-  const { prompt: systemPrompt, selectedText, selectedPatternValue } = buildSystemPrompt(categoryId, staticHookEntries, dynamicHookEntries, explicitConfig);
+  const { prompt: systemPrompt, selectedText, selectedPatternValue } = buildSystemPrompt(categoryId, staticHookEntries, dynamicHookEntries, usedPatternValues, explicitConfig);
   const userPrompt = buildSegmentPrompt(
     categoryId, topic, duration, segmentIndex, totalSegments,
     globalOutline, previousSummary, affiliateInput, trendingProduct, explicitConfig
@@ -367,7 +371,7 @@ async function generateSegment(
         return generateSegment(
           categoryId, topic, duration, segmentIndex, totalSegments,
           globalOutline, previousSummary, affiliateInput, retryCount + 1, signal,
-          staticHookEntries, dynamicHookEntries, trendingProduct, explicitConfig
+          staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, explicitConfig
         );
       }
 
@@ -396,7 +400,7 @@ async function generateSegment(
       return generateSegment(
         categoryId, topic, duration, segmentIndex, totalSegments,
         globalOutline, previousSummary, affiliateInput, retryCount + 1, signal,
-        staticHookEntries, dynamicHookEntries, trendingProduct, explicitConfig
+        staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, explicitConfig
       );
     }
     throw error;
@@ -512,7 +516,8 @@ export async function generateScript(
   affiliateInput?: AffiliateInput,
   onProgress?: (progress: GenerateScriptProgress) => void,
   signal?: AbortSignal,
-  nicheName?: string
+  nicheName?: string,
+  identityKey?: string
 ): Promise<{ scenes: Scene[]; failedSegment?: number; hookPatternUsed?: string }> {
   // Cek cache — DINONAKTIFKAN untuk script generation agar setiap generate unik
   // const cacheKey = getCacheKey(categoryId, topic, duration, affiliateInput);
@@ -570,6 +575,11 @@ export async function generateScript(
       patternValue: h.patternValue as HookPatternType,
     }));
 
+    // Step 0.5: Query usage_history untuk anti-repeat hook (jika identityKey tersedia)
+    const usedPatternValues: Set<string> = identityKey
+      ? await getUsedHookPatternValues(identityKey, categoryId)
+      : new Set<string>();
+
     // Step 1: Generate outline — kirim explicitConfig untuk custom
     onProgress?.({ status: 'generating_outline', message: 'Membuat outline...' });
     const globalOutline = await generateOutline(categoryId, topic, affiliateInput, signal, explicitConfig);
@@ -593,7 +603,7 @@ export async function generateScript(
       segment1 = await generateSegment(
         categoryId, topic, duration, 0, totalSegments,
         globalOutline, '', affiliateInput, 0, signal,
-        staticHookEntries, dynamicHookEntries, trendingProduct, explicitConfig
+        staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, explicitConfig
       );
       allScenes.push(...segment1.scenes);
     } catch (error) {
@@ -628,7 +638,7 @@ export async function generateScript(
           generateSegment(
             categoryId, topic, duration, i, totalSegments,
             globalOutline, segment1.summary, affiliateInput, 0, signal,
-            staticHookEntries, dynamicHookEntries, trendingProduct, explicitConfig
+            staticHookEntries, dynamicHookEntries, trendingProduct, usedPatternValues, explicitConfig
           ).then(result => ({ ...result, index: i }))
         );
       }
@@ -696,6 +706,14 @@ export async function generateScript(
     if (segment1.selectedPatternValue) {
       finalResult.hookPatternUsed = segment1.selectedPatternValue;
     }
+
+    // Simpan record ke usage_history (fire-and-forget — tidak blokir response)
+    if (identityKey) {
+      recordUsage(identityKey, categoryId, finalResult.hookPatternUsed ?? null, topic).catch(err => {
+        console.warn('[usage-history] Gagal menyimpan record (non-blocking):', err);
+      });
+    }
+
     return finalResult;
   } catch (error) {
     onProgress?.({

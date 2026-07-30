@@ -84,6 +84,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Generate identityKey placeholder (integrasi penuh dengan cookie di Task 4)
+    // Saat ini: gunakan IP sebagai identity sementara
+    const identityKey = `anon:${ip}`;
+
     // Generate script
     const result = await generateScript(
       category as CategoryId,
@@ -92,7 +96,8 @@ export async function POST(request: NextRequest) {
       affiliateInput,
       undefined,
       undefined,
-      nicheName
+      nicheName,
+      identityKey
     );
 
     // Simpan ke script_generations (fire-and-forget — tidak blokir response)
