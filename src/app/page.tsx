@@ -4,6 +4,15 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { allCategories } from '@/lib/categories';
 import { durationOptions } from '@/lib/duration';
 import { CategoryId, DurationTier, Scene, AffiliateInput, TTSProviderId, CartesiaSettings, ElevenLabsSettings, GTTSSettings, AffiliateProductBasic } from '@/lib/types';
+import CategoryGrid from '@/components/CategoryGrid';
+import MoodBadge from '@/components/MoodBadge';
+import StatusMessage from '@/components/StatusMessage';
+import TopicInput from '@/components/TopicInput';
+import AffiliateForm from '@/components/AffiliateForm';
+import DurationSelect from '@/components/DurationSelect';
+import ScriptResult from '@/components/ScriptResult';
+import AudioPanel from '@/components/AudioPanel';
+import SceneList from '@/components/SceneList';
 // getCategoryEmoji import removed — no longer needed
 
 export default function Home() {
@@ -54,6 +63,7 @@ export default function Home() {
   const [previewAudioError, setPreviewAudioError] = useState('');
   const [isInstantPreviewing, setIsInstantPreviewing] = useState(false);
 
+  const formRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -335,17 +345,6 @@ export default function Home() {
     setTopic(idea);
   };
 
-  const getMoodBadgeColor = (mood: string) => {
-    const colors: Record<string, string> = {
-      mencekam: '#ef4444', gelap: '#1e293b', misterius: '#8b5cf6',
-      intens: '#f97316', shock: '#dc2626', sunyi: '#64748b',
-      lega: '#22c55e', fakta: '#3b82f6', terang: '#eab308',
-      hangat: '#f59e0b', sedih: '#6366f1', rindu: '#ec4899',
-      netral: '#888', semangat: '#f97316', reflektif: '#a855f7',
-    };
-    return colors[mood] || '#888';
-  };
-
   const handleAddComparisonProduct = () => {
     if (comparisonProducts.length < 3) {
       setComparisonProducts([...comparisonProducts, { productName: '', productDescription: '', productPrice: '', productRating: undefined }]);
@@ -362,19 +361,15 @@ export default function Home() {
     setComparisonProducts(updated);
   };
 
-  // Data kategori untuk card grid — 9 preset + 1 custom terpisah
-  const presetCategoryCards = [
-    { id: 'horror' as CategoryId, emoji: '👻', name: 'Horror', desc: 'Urban legend Indonesia' },
-    { id: 'psikologi' as CategoryId, emoji: '🧠', name: 'Psikologi', desc: 'Fakta pikiran manusia' },
-    { id: 'romance' as CategoryId, emoji: '💕', name: 'Romance', desc: 'Cerita cinta sehari-hari' },
-    { id: 'motivasi' as CategoryId, emoji: '🔥', name: 'Motivasi', desc: 'Inspirasi personal' },
-    { id: 'edukasi' as CategoryId, emoji: '📚', name: 'Edukasi', desc: 'Fakta seru & unik' },
-    { id: 'affiliate' as CategoryId, emoji: '🛒', name: 'Affiliate', desc: 'Review produk otomatis' },
-    { id: 'misteri' as CategoryId, emoji: '🔍', name: 'Misteri', desc: 'Konspirasi & fenomena aneh' },
-    { id: 'sejarah' as CategoryId, emoji: '🏛️', name: 'Sejarah', desc: 'Fakta sejarah tersembunyi' },
-    { id: 'keuangan' as CategoryId, emoji: '💰', name: 'Keuangan', desc: 'Tips finansial pribadi' },
-  ];
-  const customCategoryCard = { id: 'custom' as CategoryId, emoji: '✏️', name: 'Custom', desc: 'Niche/topik bebas' };
+  // Desktop auto-scroll ke form detail setelah kategori dipilih
+  useEffect(() => {
+    if (category && formRef.current && window.innerWidth >= 768) {
+      const timer = setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [category]);
 
   return (
     <div className="space-y-6">
@@ -386,261 +381,52 @@ export default function Home() {
           <p className="text-sm text-[var(--muted-foreground)]">Pilih kategori, masukkan ide, langsung generate.</p>
         </div>
 
-        {/* Kategori — grid 3x3 preset, disabled jika sudah ada hasil */}
-        <div>
-          <label className="label">Kategori Konten</label>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {presetCategoryCards.map((card) => {
-              const isSelected = category === card.id;
-              return (
-                <button
-                  key={card.id}
-                  disabled={hasResult}
-                  onClick={() => { setCategory(card.id as CategoryId); setIdeaMode('manual'); setIdeasList([]); setSelectedIdea(null); setTrendingFailed(false); setTopic(''); setScenes([]); setAudioUrl(null); }}
-                  className={`relative flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all text-center
-                    ${isSelected
-                      ? 'border-[var(--primary)] bg-[var(--primary)]/10'
-                      : 'border-[var(--border)] hover:border-[var(--primary)]/50 bg-[var(--card-bg)]'
-                    }
-                    ${hasResult ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                  `}
-                >
-                  {isSelected && (
-                    <span className="absolute top-1 right-1 text-xs text-[var(--primary)]">✓</span>
-                  )}
-                  <span className="text-2xl">{card.emoji}</span>
-                  <span className="text-xs font-semibold">{card.name}</span>
-                  <span className="text-[10px] text-[var(--muted-foreground)] leading-tight">{card.desc}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Separator + Custom card — terpisah dari grid 3x3 biar center */}
-          <div className="relative flex items-center gap-3 my-3">
-            <div className="flex-1 border-t border-[var(--border)]" />
-            <span className="text-xs text-[var(--muted-foreground)]">atau</span>
-            <div className="flex-1 border-t border-[var(--border)]" />
-          </div>
-
-          <button
-            disabled={hasResult}
-            onClick={() => { setCategory(customCategoryCard.id); setIdeaMode('manual'); setIdeasList([]); setSelectedIdea(null); setTrendingFailed(false); setTopic(''); setScenes([]); setAudioUrl(null); }}
-            className={`w-full flex items-center justify-center gap-2 p-2.5 rounded-xl border-2 border-dashed transition-all text-center
-              ${category === customCategoryCard.id
-                ? 'border-[var(--primary)] bg-[var(--primary)]/10'
-                : 'border-[var(--border)] hover:border-[var(--primary)]/50 bg-[var(--card-bg)]'
-              }
-              ${hasResult ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-            `}
-          >
-            <span className="text-lg">{customCategoryCard.emoji}</span>
-            <span className="text-sm font-semibold">{customCategoryCard.name}</span>
-            <span className="text-[11px] text-[var(--muted-foreground)]">{customCategoryCard.desc}</span>
-          </button>
-        </div>
+        {/* Kategori — grid 3x3 preset + custom card */}
+        <CategoryGrid
+          selectedCategory={category}
+          hasResult={hasResult}
+          onSelectCategory={(id) => { setCategory(id); setIdeaMode('manual'); setIdeasList([]); setSelectedIdea(null); setTrendingFailed(false); setTopic(''); setScenes([]); setAudioUrl(null); }}
+        />
 
         {/* Form yang muncul setelah kategori dipilih — smooth appear */}
         {category && (
-        <div className="transition-all duration-300 ease-in-out animate-[fadeSlideUp_0.3s_ease-out] space-y-4">
-          {/* Topik / Ide — dengan toggle sumber ide untuk non-affiliate */}
-          {!isAffiliate && (
-            <div>
-              <label className="label">Judul / Ide Topik</label>
+        <div ref={formRef} className="transition-all duration-300 ease-in-out animate-[fadeSlideUp_0.3s_ease-out] space-y-4">
+          <TopicInput
+            topic={topic}
+            ideaMode={ideaMode}
+            ideasList={ideasList}
+            selectedIdea={selectedIdea}
+            isLoadingIdeas={isLoadingIdeas}
+            trendingFailed={trendingFailed}
+            hasResult={hasResult}
+            category={category}
+            nicheName={nicheName}
+            onTopicChange={(value) => setTopic(value)}
+            onManualClick={() => { setIdeaMode('manual'); setSelectedIdea(null); }}
+            onTrendingClick={() => { setIdeaMode('trending'); setSelectedIdea(null); setTopic(''); setTrendingFailed(false); setIdeasList([]); }}
+            onSelectIdea={(idea) => handleIdeaClick(idea)}
+            onNicheNameChange={(value) => setNicheName(value)}
+          />
 
-              {/* Toggle sumber ide — disabled jika sudah ada hasil */}
-              <div className="flex gap-2 mb-2">
-                <button className={`btn-secondary text-xs flex-1 ${ideaMode === 'manual' ? '!border-[var(--primary)]' : ''}`}
-                  disabled={hasResult}
-                  onClick={() => { setIdeaMode('manual'); setSelectedIdea(null); }}>
-                  ✏️ Manual
-                </button>
-                {category !== 'custom' && (
-                  <button className={`btn-secondary text-xs flex-1 ${ideaMode === 'trending' ? '!border-[var(--primary)]' : ''}`}
-                    disabled={hasResult}
-                    onClick={() => { setIdeaMode('trending'); setSelectedIdea(null); setTopic(''); setTrendingFailed(false); setIdeasList([]); }}>
-                    📈 Trending
-                  </button>
-                )}
-              </div>
-
-              {/* Mode Manual: input teks langsung */}
-              {ideaMode === 'manual' && (
-                <input
-                  className="input-field"
-                  disabled={hasResult}
-                  placeholder="Ketik ide topik kamu..."
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                />
-              )}
-
-              {/* Mode Trending / AI Suggest: chips dulu, input setelah pilih */}
-              {ideaMode !== 'manual' && (
-                <>
-                  {/* Loading */}
-                  {isLoadingIdeas && (
-                    <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                      <div className="w-3 h-3 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
-                      Mencari ide...
-                    </div>
-                  )}
-
-                  {/* Chips */}
-                  {!isLoadingIdeas && ideasList.length > 0 && (
-                    <div>
-                      <p className="text-xs text-[var(--muted-foreground)] mb-2">
-                        Pilih salah satu ide di bawah untuk digunakan:
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {ideasList.map((idea, idx) => (
-                          <button key={idx}
-                            disabled={hasResult}
-                            className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
-                              selectedIdea === idea
-                                ? 'bg-[var(--primary)] text-white'
-                                : 'bg-[var(--border)] hover:bg-[var(--primary)] hover:text-white'
-                            }`}
-                            onClick={() => handleIdeaClick(idea)}>
-                            {idea}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Error */}
-                  {!isLoadingIdeas && trendingFailed && (
-                    <p className="text-xs text-yellow-400 bg-yellow-900/20 p-2 rounded-lg border border-yellow-800">
-                      Belum ada data trending untuk kategori ini, coba lagi nanti.
-                    </p>
-                  )}
-
-                  {/* Input teks muncul setelah chip dipilih */}
-                  {selectedIdea && (
-                    <div className="mt-3">
-                      <label className="text-xs text-[var(--muted-foreground)] mb-1 block">
-                        Atau edit ide yang dipilih:
-                      </label>
-                      <input
-                        className="input-field"
-                        disabled={hasResult}
-                        placeholder="Edit ide..."
-                        value={topic}
-                        onChange={(e) => setTopic(e.target.value)}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-
-          {/* Custom kategori — input nama niche */}
-          {category === 'custom' && (
-            <div>
-              <label className="label">Nama Niche / Topik Kamu</label>
-              <input
-                className="input-field"
-                disabled={hasResult}
-                placeholder="Contoh: Kuliner Nusantara, Parenting, Teknologi..."
-                value={nicheName}
-                onChange={(e) => setNicheName(e.target.value)}
-              />
-              <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                Tentukan niche spesifik untuk konten kamu. Misalnya: "Kuliner Nusantara", "Parenting", "Review Film", dll.
-              </p>
-            </div>
-          )}
-
-          {/* Affiliate form — 4 field manual, tanpa auto-scrape */}
           {isAffiliate && (
-            <div className="space-y-3">
-              <div>
-                <label className="label">Nama Produk <span className="text-red-400">*</span></label>
-                <input className="input-field" placeholder="Contoh: Scarlett Whitening Serum"
-                  value={affiliateInput.productName}
-                  onChange={(e) => setAffiliateInput({ ...affiliateInput, productName: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Fitur / Deskripsi Utama <span className="text-red-400">*</span></label>
-                <textarea className="textarea-field" rows={3}
-                  placeholder="Contoh: Skincare serum vitamin C, tekstur ringan, cocok kulit berminyak, kemasan 30ml"
-                  value={affiliateInput.productDescription}
-                  onChange={(e) => setAffiliateInput({ ...affiliateInput, productDescription: e.target.value })} />
-                <p className="text-xs text-[var(--muted-foreground)] mt-1">
-                  Jelaskan fitur utama produk. Semakin detail, semakin baik hasil review-nya.
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Harga (opsional)</label>
-                  <input className="input-field" placeholder="Contoh: Rp 150.000"
-                    value={affiliateInput.productPrice || ''}
-                    onChange={(e) => setAffiliateInput({ ...affiliateInput, productPrice: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">Rating (opsional)</label>
-                  <input className="input-field" type="number" min="0" max="5" step="0.1" placeholder="Contoh: 4.5"
-                    value={affiliateInput.productRating || ''}
-                    onChange={(e) => setAffiliateInput({ ...affiliateInput, productRating: e.target.value ? parseFloat(e.target.value) : undefined })} />
-                </div>
-              </div>
-
-              {/* Mode perbandingan (long/3 menit) — tambah produk kedua/ketiga */}
-              {isComparisonMode && (
-                <div className="space-y-3 pt-3 border-t border-[var(--border)]">
-                  <div className="flex items-center justify-between">
-                    <label className="label mb-0">Produk Pembanding (opsional, maks. 3 total)</label>
-                    {comparisonProducts.length < 2 && (
-                      <button className="btn-secondary text-xs py-1 px-3" onClick={handleAddComparisonProduct}>
-                        + Tambah Produk
-                      </button>
-                    )}
-                  </div>
-
-                  {comparisonProducts.map((prod, idx) => (
-                    <div key={idx} className="p-3 rounded-lg border border-[var(--border)] space-y-2 relative">
-                      <button
-                        className="absolute top-2 right-2 text-xs text-red-400 hover:text-red-300"
-                        onClick={() => handleRemoveComparisonProduct(idx)}>
-                        ✕ Hapus
-                      </button>
-                      <p className="text-xs font-semibold text-[var(--muted-foreground)]">Produk {idx + 2}</p>
-                      <input className="input-field text-sm" placeholder="Nama produk"
-                        value={prod.productName}
-                        onChange={(e) => handleComparisonProductChange(idx, 'productName', e.target.value)} />
-                      <textarea className="textarea-field text-sm" rows={2} placeholder="Fitur / Deskripsi utama"
-                        value={prod.productDescription}
-                        onChange={(e) => handleComparisonProductChange(idx, 'productDescription', e.target.value)} />
-                      <div className="grid grid-cols-2 gap-2">
-                        <input className="input-field text-sm" placeholder="Harga (opsional)"
-                          value={prod.productPrice || ''}
-                          onChange={(e) => handleComparisonProductChange(idx, 'productPrice', e.target.value)} />
-                        <input className="input-field text-sm" type="number" min="0" max="5" step="0.1" placeholder="Rating (opsional)"
-                          value={prod.productRating || ''}
-                          onChange={(e) => handleComparisonProductChange(idx, 'productRating', e.target.value ? parseFloat(e.target.value) : undefined)} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <AffiliateForm
+              affiliateInput={affiliateInput}
+              isComparisonMode={isComparisonMode}
+              comparisonProducts={comparisonProducts}
+              hasResult={hasResult}
+              onAffiliateInputChange={(input) => setAffiliateInput(input)}
+              onAddComparisonProduct={handleAddComparisonProduct}
+              onRemoveComparisonProduct={handleRemoveComparisonProduct}
+              onComparisonProductChange={handleComparisonProductChange}
+            />
           )}
 
-          {/* Durasi — disabled jika sudah ada hasil */}
-          <div>
-            <label className="label">Durasi Konten</label>
-            <select className="select-field" value={duration}
-              disabled={hasResult}
-              onChange={(e) => setDuration(e.target.value as DurationTier)}>
-              <option value="">— Pilih Durasi —</option>
-              {durationOptions.map((d) => (
-                <option key={d.id} value={d.id}>{d.label} — {d.description}</option>
-              ))}
-            </select>
-          </div>
+          <DurationSelect
+            duration={duration}
+            hasResult={hasResult}
+            category={category}
+            onDurationChange={(value) => setDuration(value)}
+          />
 
           {/* Tombol Generate / Cancel / Buat Baru */}
           <div className="flex gap-2">
@@ -676,16 +462,16 @@ export default function Home() {
 
           {/* Cancel message */}
           {isCancelled && (
-            <div className="text-sm text-yellow-400 bg-yellow-900/20 p-3 rounded-lg border border-yellow-800">
+            <StatusMessage variant="warning">
               ⏹️ Proses dibatalkan
-            </div>
+            </StatusMessage>
           )}
 
           {/* Error */}
           {errorMessage && (
-            <div className="text-sm text-red-400 bg-red-900/20 p-3 rounded-lg border border-red-800">
-              ❌ {errorMessage}
-            </div>
+            <StatusMessage variant="error">
+              {errorMessage}
+            </StatusMessage>
           )}
 
           {/* Dialog konfirmasi Buat Konten Baru */}
@@ -714,275 +500,43 @@ export default function Home() {
       {/* ===== BAGIAN BAWAH: HASIL ===== */}
       {hasResult && (
         <div className="space-y-4">
-          {/* Header hasil */}
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">
-              {failedSegment ? '⚠️ Script Tidak Lengkap' : '✅ Script Selesai!'}
-            </h2>
-            <span className="text-sm text-[var(--muted-foreground)]">
-              {scenes.length} scene · ~{scenes.reduce((sum, s) => sum + s.narration.split(/\s+/).length, 0)} kata
-            </span>
-          </div>
+          <ScriptResult
+            scenes={scenes}
+            failedSegment={failedSegment}
+            fullNarration={fullNarration}
+            copied={copied}
+            textAreaRef={textAreaRef as React.RefObject<HTMLTextAreaElement>}
+            onCopyText={handleCopyText}
+          />
 
-          {failedSegment && (
-            <div className="card border-yellow-600 bg-yellow-900/20">
-              <p className="text-sm text-yellow-400">
-                Script berhenti di bagian {failedSegment}. Klik Generate lagi untuk mencoba ulang.
-              </p>
-            </div>
-          )}
+          <AudioPanel
+            scenes={scenes}
+            ttsProvider={ttsProvider}
+            cartesiaSettings={cartesiaSettings}
+            elevenSettings={elevenSettings}
+            googleSettings={googleSettings}
+            isGeneratingAudio={isGeneratingAudio}
+            audioProgress={audioProgress}
+            audioUrl={audioUrl}
+            audioError={audioError}
+            isPreviewing={isPreviewing}
+            previewAudioUrl={previewAudioUrl}
+            previewAudioError={previewAudioError}
+            isInstantPreviewing={isInstantPreviewing}
+            onTtsProviderChange={(provider) => { setTtsProvider(provider); setAudioUrl(null); setAudioError(''); }}
+            onCartesiaSettingsChange={(settings) => setCartesiaSettings(settings)}
+            onElevenSettingsChange={(settings) => setElevenSettings(settings)}
+            onGoogleSettingsChange={(settings) => setGoogleSettings(settings)}
+            onInstantPreview={handleInstantPreview}
+            onPreviewAudio={handlePreviewAudio}
+            onGenerateAudio={handleGenerateAudio}
+          />
 
-          {/* === BLOK TEKS COPYABLE === */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-2">
-              <label className="label mb-0">Full Narasi (copyable)</label>
-              <button onClick={handleCopyText} className="text-sm text-[var(--primary)] hover:underline">
-                {copied ? '✅ Tercopy!' : '📋 Copy to Clipboard'}
-              </button>
-            </div>
-            <textarea
-              ref={textAreaRef}
-              className="textarea-field font-mono text-xs leading-relaxed"
-              rows={8}
-              value={fullNarration}
-              readOnly
-              onClick={(e) => (e.target as HTMLTextAreaElement).select()}
-            />
-          </div>
-
-          {/* === OPSI KONVERSI KE AUDIO === */}
-          <div className="card space-y-4">
-            <h3 className="font-semibold">🔊 Konversi ke Audio</h3>
-
-            {/* Pilih Provider */}
-            <div>
-              <label className="label">Provider Suara</label>
-              <select className="select-field" value={ttsProvider}
-                onChange={(e) => { setTtsProvider(e.target.value as TTSProviderId); setAudioUrl(null); setAudioError(''); }}>
-                <option value="google">Google TTS (Gratis, suara robotik)</option>
-                <option value="cartesia">Cartesia Sonic (Kualitas tinggi, perlu API key)</option>
-                <option value="elevenlabs">ElevenLabs (Kualitas tinggi, perlu API key)</option>
-              </select>
-            </div>
-
-            {/* Cartesia Settings */}
-            {ttsProvider === 'cartesia' && (
-              <div className="space-y-3">
-                <div>
-                  <label className="label">Pilih Suara</label>
-                  <select className="select-field" value={cartesiaSettings.voice_id}
-                    onChange={(e) => setCartesiaSettings({ ...cartesiaSettings, voice_id: e.target.value })}>
-                    <option value="">Default (dari API key)</option>
-                    <option value="andi">Andi</option>
-                    <option value="siti">Siti</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Speed: {cartesiaSettings.speed.toFixed(1)}x</label>
-                  <input type="range" min="0.6" max="1.5" step="0.1" className="slider-field"
-                    value={cartesiaSettings.speed}
-                    onChange={(e) => setCartesiaSettings({ ...cartesiaSettings, speed: parseFloat(e.target.value) })} />
-                  <div className="flex justify-between text-xs text-[var(--muted-foreground)]">
-                    <span>0.6x (lambat)</span><span>1.5x (cepat)</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="label">Emotion (opsional)</label>
-                  <select className="select-field" value={cartesiaSettings.emotion || ''}
-                    onChange={(e) => setCartesiaSettings({ ...cartesiaSettings, emotion: e.target.value || undefined })}>
-                    <option value="">— Tanpa emotion —</option>
-                    <option value="neutral">Neutral</option>
-                    <option value="calm">Calm</option>
-                    <option value="angry">Angry</option>
-                    <option value="sad">Sad</option>
-                    <option value="scared">Scared</option>
-                    <option value="curious">Curious</option>
-                    <option value="mysterious">Mysterious</option>
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {/* ElevenLabs Settings */}
-            {ttsProvider === 'elevenlabs' && (
-              <div className="space-y-3">
-                <div>
-                  <label className="label">Stability: {elevenSettings.stability.toFixed(2)}</label>
-                  <input type="range" min="0" max="1" step="0.05" className="slider-field"
-                    value={elevenSettings.stability}
-                    onChange={(e) => setElevenSettings({ ...elevenSettings, stability: parseFloat(e.target.value) })} />
-                </div>
-                <div>
-                  <label className="label">Similarity Boost: {elevenSettings.similarity_boost.toFixed(2)}</label>
-                  <input type="range" min="0" max="1" step="0.05" className="slider-field"
-                    value={elevenSettings.similarity_boost}
-                    onChange={(e) => setElevenSettings({ ...elevenSettings, similarity_boost: parseFloat(e.target.value) })} />
-                </div>
-                <div>
-                  <label className="label">Style: {elevenSettings.style.toFixed(2)}</label>
-                  <input type="range" min="0" max="1" step="0.05" className="slider-field"
-                    value={elevenSettings.style}
-                    onChange={(e) => setElevenSettings({ ...elevenSettings, style: parseFloat(e.target.value) })} />
-                </div>
-                <div>
-                  <label className="label">Speed: {elevenSettings.speed.toFixed(1)}x</label>
-                  <input type="range" min="0.5" max="2" step="0.1" className="slider-field"
-                    value={elevenSettings.speed}
-                    onChange={(e) => setElevenSettings({ ...elevenSettings, speed: parseFloat(e.target.value) })} />
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="speakerBoost" checked={elevenSettings.use_speaker_boost}
-                    onChange={(e) => setElevenSettings({ ...elevenSettings, use_speaker_boost: e.target.checked })} />
-                  <label htmlFor="speakerBoost" className="text-sm">Speaker Boost</label>
-                </div>
-              </div>
-            )}
-
-            {/* Google TTS Settings */}
-            {ttsProvider === 'google' && (
-              <div className="space-y-3">
-                <div>
-                  <label className="label">Bahasa</label>
-                  <select className="select-field" value={googleSettings.lang}
-                    onChange={(e) => setGoogleSettings({ ...googleSettings, lang: e.target.value })}>
-                    <option value="id">Bahasa Indonesia</option>
-                    <option value="en">English</option>
-                    <option value="ja">Japanese</option>
-                  </select>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="checkbox" id="slowMode" checked={googleSettings.slow}
-                    onChange={(e) => setGoogleSettings({ ...googleSettings, slow: e.target.checked })} />
-                  <label htmlFor="slowMode" className="text-sm">Mode Lambat (slow)</label>
-                </div>
-                <p className="text-xs text-[var(--muted-foreground)]">
-                  ⚠️ Google TTS memiliki kontrol kecepatan terbatas (hanya slow/normal). 
-                  Kualitas suara lebih robotik dibanding Cartesia/ElevenLabs.
-                </p>
-              </div>
-            )}
-
-            {/* Loading progress audio */}
-            {isGeneratingAudio && (
-              <div className="space-y-2">
-                <button className="btn-primary w-full" disabled={true}>
-                  <div className="flex items-center justify-center gap-2">
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    ⏳ Generating Audio...
-                  </div>
-                </button>
-                <div className="text-xs text-[var(--muted-foreground)] text-center animate-pulse">
-                  {audioProgress}
-                </div>
-                {/* Progress bar per-scene */}
-                <div className="w-full bg-[var(--border)] rounded-full h-2 overflow-hidden">
-                  <div className="bg-[var(--primary)] h-2 rounded-full animate-pulse"
-                    style={{ width: '100%', transition: 'width 0.5s ease' }} />
-                </div>
-              </div>
-            )}
-
-            {/* Tombol Instant Preview + Preview + Generate Audio (idle) */}
-            {!isGeneratingAudio && (
-              <div className="space-y-2">
-                <div className="flex gap-2">
-                  <button className="btn-secondary text-sm flex-[0.3]"
-                    disabled={scenes.length === 0 || isInstantPreviewing}
-                    onClick={handleInstantPreview}>
-                    {isInstantPreviewing ? '🔊 ...' : '⚡ Instant'}
-                  </button>
-                  <button className="btn-secondary flex-[0.3]"
-                    disabled={scenes.length === 0 || isPreviewing}
-                    onClick={handlePreviewAudio}>
-                    {isPreviewing ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <div className="w-3 h-3 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
-                        Preview...
-                      </span>
-                    ) : '🔊 Preview'}
-                  </button>
-                  <button className="btn-primary flex-[0.4]"
-                    disabled={scenes.length === 0}
-                    onClick={handleGenerateAudio}>
-                    🎵 Generate Audio
-                  </button>
-                </div>
-                <p className="text-[10px] text-[var(--muted-foreground)] text-center">
-                  ⚡ = suara browser, bukan suara provider asli
-                </p>
-              </div>
-            )}
-
-            {/* Mini preview player */}
-            {previewAudioUrl && (
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-                  <span>🔊 Preview (7 kata pertama)</span>
-                </div>
-                <audio controls className="w-full h-8" src={previewAudioUrl} autoPlay>
-                  Browser tidak mendukung audio player.
-                </audio>
-              </div>
-            )}
-
-            {previewAudioError && (
-              <div className="text-sm text-red-400 bg-red-900/20 p-3 rounded-lg border border-red-800">
-                ❌ {previewAudioError}
-              </div>
-            )}
-
-            {audioError && (
-              <div className="text-sm text-red-400 bg-red-900/20 p-3 rounded-lg border border-red-800 whitespace-pre-line">
-                ❌ {audioError}
-              </div>
-            )}
-
-            {/* Audio Player + Download */}
-            {audioUrl && (
-              <div className="space-y-3">
-                <audio ref={audioRef} controls className="w-full" src={audioUrl}>
-                  Browser tidak mendukung audio player.
-                </audio>
-                <div className="flex gap-2">
-                  <a href={audioUrl} download="viraloop-audio.mp3"
-                    className="btn-secondary text-sm flex-1 text-center">
-                    ⬇️ Download MP3
-                  </a>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* === DAFTAR SCENE === */}
-          <div className="space-y-2">
-            <h3 className="font-semibold">📜 Daftar Scene</h3>
-            {scenes.map((scene, i) => (
-              <div key={i} className="card">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-xs text-[var(--muted-foreground)]">Scene {i + 1}</span>
-                  {scene.is_hook && (
-                    <span className="text-xs bg-yellow-600/20 text-yellow-400 px-2 py-0.5 rounded">HOOK</span>
-                  )}
-                  <span className="text-xs px-2 py-0.5 rounded"
-                    style={{ backgroundColor: getMoodBadgeColor(scene.scene_mood) + '33', color: getMoodBadgeColor(scene.scene_mood) }}>
-                    {scene.scene_mood}
-                  </span>
-                  <button onClick={() => setExpandedScene(expandedScene === i ? null : i)}
-                    className="ml-auto text-xs text-[var(--muted-foreground)]">
-                    {expandedScene === i ? 'Sembunyikan' : 'Detail'}
-                  </button>
-                </div>
-                <p className="text-sm leading-relaxed">{scene.narration}</p>
-                {expandedScene === i && (
-                  <div className="mt-2 pt-2 border-t border-[var(--border)]">
-                    <p className="text-xs text-[var(--muted-foreground)]">
-                      <strong>Image Prompt:</strong> {scene.image_prompt}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <SceneList
+            scenes={scenes}
+            expandedScene={expandedScene}
+            onToggleExpand={(i) => setExpandedScene(expandedScene === i ? null : i)}
+          />
         </div>
       )}
     </div>
