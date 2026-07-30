@@ -10,6 +10,26 @@ export const motivationConfig: CategoryConfig = {
   styleSuffix: ', bold modern illustration, dynamic lighting, motivational atmosphere, high contrast',
   temperature: 0.75,
   usesFictionalCharacter: false,
+  scriptSkeleton: 'informational_arc',
+  closingMode: 'actionable_takeaway',
+  narratorPersona: {
+    name: 'Sang Mentor',
+    tone: 'Tegas, suportif, dan langsung — seperti pelatih yang mendorong kamu dari kursi malas untuk bangkit dan bergerak',
+    sentenceRhythm: 'Kalimat pendek-pendek yang powerful. Satu kalimat = satu tamparan realita. Sering ada jeda setelah quote kunci. Pakai ritme "tanya-jawab" retoris.',
+    signaturePhrases: [
+      'Kamu nggak gagal...',
+      'Yang bikin beda adalah...',
+      'Coba satu hal kecil...',
+      'Bukan karena kamu kurang...',
+      'Mulai dari...'
+    ],
+    avoidWords: [
+      'menurut penelitian',
+      'secara statistik',
+      'konon',
+      'alkisah'
+    ],
+  },
   exampleScenes: [
     {
       narration: 'Kamu nggak gagal. Kamu cuma lagi Belajar versi yang lebih susah. Coba satu hal kecil hari ini: buka catatan yang selama ini kamu tunda selama 10 menit aja.',

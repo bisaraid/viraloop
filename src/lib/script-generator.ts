@@ -1,10 +1,10 @@
 import { aiCompletion } from '@/lib/ai/completion';
 import { getCategoryConfig, getCustomCategoryConfig } from '@/lib/categories';
 import { getDurationConfig } from '@/lib/duration';
-import { parseScriptJson, validateScriptScenes, validateContentRules, validationFailureCounters } from '@/lib/script-validator';
-import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress, HookPatternType } from '@/lib/types';
+import { parseScriptJson, validateScriptScenes, validateContentRules, validateClosingScene, validationFailureCounters } from '@/lib/script-validator';
+import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress, HookPatternType, ScriptSkeleton, CategoryConfig } from '@/lib/types';
 import { getOptionalEnvVar } from '@/lib/env';
-import { getTopHooks, TopHookResult } from '@/lib/dynamicHooks';
+import { getTopHooks } from '@/lib/dynamicHooks';
 import { detectHookType } from '@/lib/pattern';
 import { fetchTrendingProduct, TrendingProduct } from '@/lib/trendtracker-client';
 
@@ -49,32 +49,77 @@ function setCache(key: string, data: { scenes: Scene[]; failedSegment?: number }
 }
 
 /**
+ * Ambil scriptSkeleton dari config, handle custom dengan fallback.
+ */
+function getScriptSkeleton(config: { scriptSkeleton?: ScriptSkeleton; usesFictionalCharacter?: boolean }): ScriptSkeleton {
+  if (config.scriptSkeleton) return config.scriptSkeleton;
+  // Fallback: jika tidak ada scriptSkeleton, infer dari usesFictionalCharacter
+  return config.usesFictionalCharacter ? 'narrative_arc' : 'informational_arc';
+}
+
+/**
+ * Resolve config: jika config diberikan langsung, pakai itu.
+ * Jika tidak, fallback ke getCategoryConfig(categoryId).
+ * Ini mencegah custom category menggunakan placeholder dari categoryMap.
+ */
+function resolveConfig(categoryId: CategoryId, config?: CategoryConfig): CategoryConfig {
+  if (config) return config;
+  return getCategoryConfig(categoryId);
+}
+
+/**
  * Build the system prompt for a given category.
- * Returns the prompt string, the selected hook text, and its pattern_value enum.
- *
- * Design: Hook entries carry both text and pattern_value natively:
- * - Dynamic hooks (from pattern_insights): patternValue already known from DB
- * - Static hooks (from file categories): patternValue detected once via detectHookType()
- *   at build time, not re-parsed at report time.
+ * Menerima config opsional — jika diberikan, dipakai langsung (tanpa via getCategoryConfig)
+ * sehingga custom category tidak akan kena placeholder.
  */
 function buildSystemPrompt(
   categoryId: CategoryId,
   staticHookEntries: HookEntry[],
-  dynamicHookEntries: HookEntry[]
+  dynamicHookEntries: HookEntry[],
+  explicitConfig?: CategoryConfig
 ): { prompt: string; selectedText: string | null; selectedPatternValue: HookPatternType | null } {
-  const config = getCategoryConfig(categoryId);
-  let prompt = `Kamu adalah penulis script video pendek bahasa Indonesia. 
-Persona: ${config.persona}
+  const config = resolveConfig(categoryId, explicitConfig);
+  const skeleton = getScriptSkeleton(config);
+  const persona = config.narratorPersona;
 
-STRUKTUR CERITA:
+  let prompt = `Kamu adalah penulis script video pendek bahasa Indonesia. 
+
+PERSONA NARATOR:
+Nama persona: ${persona.name}
+Tone: ${persona.tone}
+Irama kalimat: ${persona.sentenceRhythm}
+Frasa khas yang boleh dipakai: ${persona.signaturePhrases.join(', ')}
+Kata yang HARUS DIHINDARI: ${persona.avoidWords.join(', ')}
+
+STRUKTUR KONTEN:
 ${config.storyStructure}
 
-${config.rules ? `ATURAN:\n${config.rules}\n` : ''}
-${categoryId === 'sejarah'
-  ? 'ATURAN WAJIB: Kategori ini adalah konten SEJARAH FAKTUAL. BOLEH menyebut tokoh SEJARAH ASLI yang benar-benar ada (seperti Gajah Mada, Hayam Wuruk, Cut Nyak Dien, dll). DILARANG KERAS mengarang KARAKTER FIKSI BARU (nama rekaan seperti "Rina", "Budi", dst yang tidak ada dalam catatan sejarah). DILARANG membuat subplot/cerita personal fiktif. Sampaikan konten berdasarkan fakta sejarah.\n'
-: config.usesFictionalCharacter === false
-  ? `ATURAN WAJIB: Kategori ini adalah konten INFORMATIF/TIPS LANGSUNG, BUKAN cerita fiksi. DILARANG KERAS membuat nama karakter (seperti 'Rina', 'Budi', dst), DILARANG membuat subplot/cerita personal apapun. Sampaikan SEMUA poin secara langsung ke pemirsa menggunakan kata 'kamu' atau 'guys', TANPA tokoh perantara.\n`
-  : 'Kategori ini MENGGUNAKAN karakter/tokoh fiksi. Wajib membuat tokoh dengan nama dan latar yang jelas untuk mendukung cerita.\n'}
+${config.rules ? `ATURAN:\n${config.rules}\n` : ''}`;
+
+  if (config.closingMode === 'actionable_takeaway') {
+    prompt += `
+CLOSING WAJIB: Scene TERAKHIR dari naskah HARUS berisi SATU poin kesimpulan konkret yang bisa langsung dipraktikkan penonton. Bukan "jadi begitulah" — tapi ajakan spesifik seperti "coba lakukan X" atau "pilihan yang bisa kamu ambil adalah Y". Sampaikan tetap dalam gaya persona narator.`;
+  } else if (config.closingMode === 'cliffhanger_follow') {
+    prompt += `
+CLOSING WAJIB: Scene TERAKHIR dari naskah HARUS meninggalkan elemen emosional yang BELUM TERSELESAIKAN — pertanyaan menggantung, ketegangan yang belum reda, atau momen yang bikin penonton penasaran. Sertakan ajakan IMPLISIT untuk follow (misalnya "ikutin cerita selanjutnya" atau "follow biar nggak ketinggalan") tanpa terdengar seperti iklan murahan. Jaga agar tetap natural dalam alur cerita.`;
+  }
+
+  // Branching: instruksi berdasarkan scriptSkeleton
+  if (skeleton === 'narrative_arc') {
+    prompt += `
+Kategori ini MENGGUNAKAN alur CERITA FIKSI dengan karakter/tokoh. Wajib membuat tokoh dengan nama dan latar yang jelas untuk mendukung cerita. Bangun ketegangan dramatis, konflik, dan resolusi sebagaimana alur cerita pada umumnya.
+`;
+  } else if (skeleton === 'factual_narrative') {
+    prompt += `
+ATURAN WAJIB: Kategori ini adalah konten SEJARAH FAKTUAL. BOLEH menyebut tokoh SEJARAH ASLI yang benar-benar ada (seperti Gajah Mada, Hayam Wuruk, Cut Nyak Dien, dll). DILARANG KERAS mengarang KARAKTER FIKSI BARU (nama rekaan seperti "Rina", "Budi", dst yang tidak ada dalam catatan sejarah). DILARANG membuat subplot/cerita personal fiktif. Sampaikan konten berdasarkan fakta sejarah secara kronologis.
+`;
+  } else if (skeleton === 'informational_arc') {
+    prompt += `
+ATURAN WAJIB: Kategori ini adalah konten INFORMATIF/TIPS LANGSUNG, BUKAN cerita fiksi. DILARANG KERAS membuat nama karakter (seperti 'Rina', 'Budi', dst), DILARANG membuat subplot/cerita personal apapun. Sampaikan SEMUA poin secara langsung ke pemirsa menggunakan kata 'kamu' atau 'guys', TANPA tokoh perantara. Setiap segmen berdiri sendiri membahas poin baru — JANGAN membuat cliffhanger atau alur bersambung dramatis.
+`;
+  }
+
+  prompt += `
 MOOD VALID (hanya gunakan mood dari daftar ini):
 ${config.validMoods.join(', ')}
 
@@ -143,6 +188,8 @@ Namun tetap variasikan bahasa dan pendekatan agar tidak terdengar repetitif.`;
 
 /**
  * Build the user prompt for segment generation
+ * Menerima config opsional — jika diberikan, dipakai langsung (tanpa via getCategoryConfig)
+ * sehingga custom category tidak akan kena placeholder.
  */
 function buildSegmentPrompt(
   categoryId: CategoryId,
@@ -153,8 +200,11 @@ function buildSegmentPrompt(
   globalOutline: string,
   previousSummary: string,
   affiliateInput?: AffiliateInput,
-  trendingProduct?: TrendingProduct | null
+  trendingProduct?: TrendingProduct | null,
+  explicitConfig?: CategoryConfig
 ): string {
+  const config = resolveConfig(categoryId, explicitConfig);
+  const skeleton = getScriptSkeleton(config);
   const durConfig = getDurationConfig(duration);
   const scenesPerSegment = Math.ceil(durConfig.targetScenes / totalSegments);
 
@@ -176,9 +226,10 @@ Gunakan data ini sebagai referensi utama dalam review. Jangan mengarang data yan
 
   if (segmentIndex === 0) {
     // First segment: generate first scenes using the global outline
-    prompt = `Buat script video ${categoryId === 'affiliate' ? 'review produk' : categoryId} dengan topik: "${topic}"
+    const categoryLabel = categoryId === 'affiliate' ? 'review produk' : categoryId;
+    prompt = `Buat script video ${categoryLabel} dengan topik: "${topic}"
     
-OUTLINE GLOBAL CERITA:
+OUTLINE GLOBAL:
 ${globalOutline}
 
 Target: ${scenesPerSegment} scene pertama (total ${durConfig.targetScenes} scene untuk seluruh video).
@@ -199,26 +250,55 @@ INGAT: Hanya gunakan informasi yang ada di data di atas. Jangan tambahkan klaim 
 ${trendingContext}
 Buat scene-scene pertama sesuai outline di atas. Scene pertama (is_hook: true) harus hook yang kuat.`;
   } else {
-    // Subsequent segments: use outline + previous summary for continuity
+    // Subsequent segments: branching berdasarkan scriptSkeleton
     const startScene = segmentIndex * scenesPerSegment + 1;
     const endScene = Math.min((segmentIndex + 1) * scenesPerSegment, durConfig.targetScenes);
-    prompt = `Lanjutkan script video dengan topik: "${topic}"
 
-OUTLINE GLOBAL CERITA:
+    if (skeleton === 'informational_arc') {
+      // Untuk konten informatif: setiap segmen adalah poin/langkah baru yang berdiri sendiri
+      prompt = `Lanjutkan script dengan topik: "${topic}"
+
+OUTLINE GLOBAL:
+${globalOutline}
+
+${previousSummary ? `POIN SEBELUMNYA YANG SUDAH DIBAHAS (untuk menghindari pengulangan):\n${previousSummary}\n` : ''}
+
+Target: ${scenesPerSegment} scene berikutnya (scene ${startScene} sampai ${endScene}).
+
+Lanjutkan ke poin/langkah berikutnya dari outline di atas. Penting:
+- Setiap segmen membahas poin BARU yang berdiri sendiri — JANGAN buat cliffhanger atau alur bersambung dramatis
+- JANGAN menggunakan kata "Lanjutkan cerita" — ini BUKAN cerita, ini konten informatif
+- JANGAN membuat karakter/tokoh fiksi — sampaikan langsung ke pemirsa (kamu/guys)
+- Gunakan outline global sebagai panduan poin-poin yang harus dibahas
+- Jangan ulangi poin yang sudah tercakup di ringkasan sebelumnya`;
+    } else {
+      // Untuk narrative_arc dan factual_narrative: kontinuitas alur
+      const continuityInstruction = skeleton === 'factual_narrative'
+        ? `Lanjutkan kronologi sejarah dari outline di atas. Pastikan:
+- Kronologi waktu akurat dan berurutan
+- Tokoh sejarah KONSISTEN dengan catatan sejarah
+- Jangan membuat karakter fiksi baru
+- Alur faktual dan kronologis, jangan membuat twist dramatis yang tidak berdasarkan fakta`
+        : `Lanjutkan cerita dari outline global di atas. Pastikan:
+- Karakter/tokoh KONSISTEN dengan outline
+- Nama tokoh dan setting KONSISTEN
+- Alur cerita nyambung logis mengikuti outline
+- Mood sesuai dengan perkembangan cerita
+- Jangan ulangi adegan yang sudah terjadi`;
+
+      prompt = `Lanjutkan script dengan topik: "${topic}"
+
+OUTLINE GLOBAL:
 ${globalOutline}
 
 ${previousSummary ? `RINGKASAN BAGIAN SEBELUMNYA (untuk referensi kontinuitas):\n${previousSummary}\n` : ''}
 
 Target: ${scenesPerSegment} scene berikutnya (scene ${startScene} sampai ${endScene}).
 
-Lanjutkan cerita dari outline global di atas. Pastikan:
-- Karakter/tokoh KONSISTEN dengan outline
-- Nama tokoh dan setting KONSISTEN
-- Alur cerita nyambung logis mengikuti outline
-- Mood sesuai dengan perkembangan cerita
-- Jangan ulangi adegan yang sudah terjadi
+${continuityInstruction}
 
 PENTING: Gunakan outline global sebagai panduan utama. Ringkasan sebelumnya hanya untuk referensi kontinuitas.`;
+    }
   }
 
   return prompt;
@@ -226,6 +306,8 @@ PENTING: Gunakan outline global sebagai panduan utama. Ringkasan sebelumnya hany
 
 /**
  * Generate a single segment of the script
+ * Menerima explicitConfig — untuk custom category, config yang sudah di-resolve
+ * dengan nicheName dikirim langsung agar tidak kena placeholder.
  */
 async function generateSegment(
   categoryId: CategoryId,
@@ -240,15 +322,15 @@ async function generateSegment(
   signal?: AbortSignal,
   staticHookEntries: HookEntry[] = [],
   dynamicHookEntries: HookEntry[] = [],
-  trendingProduct?: TrendingProduct | null
+  trendingProduct?: TrendingProduct | null,
+  explicitConfig?: CategoryConfig
 ): Promise<{ scenes: Scene[]; summary: string; hasValidationFlagged?: boolean; selectedText?: string | null; selectedPatternValue?: HookPatternType | null }> {
-  const { prompt: systemPrompt, selectedText, selectedPatternValue } = buildSystemPrompt(categoryId, staticHookEntries, dynamicHookEntries);
+  const config = resolveConfig(categoryId, explicitConfig);
+  const { prompt: systemPrompt, selectedText, selectedPatternValue } = buildSystemPrompt(categoryId, staticHookEntries, dynamicHookEntries, explicitConfig);
   const userPrompt = buildSegmentPrompt(
     categoryId, topic, duration, segmentIndex, totalSegments,
-    globalOutline, previousSummary, affiliateInput, trendingProduct
+    globalOutline, previousSummary, affiliateInput, trendingProduct, explicitConfig
   );
-
-  const config = getCategoryConfig(categoryId);
 
   try {
     const result = await aiCompletion({
@@ -284,7 +366,8 @@ async function generateSegment(
         await new Promise(resolve => setTimeout(resolve, delay));
         return generateSegment(
           categoryId, topic, duration, segmentIndex, totalSegments,
-          globalOutline, previousSummary, affiliateInput, retryCount + 1, signal
+          globalOutline, previousSummary, affiliateInput, retryCount + 1, signal,
+          staticHookEntries, dynamicHookEntries, trendingProduct, explicitConfig
         );
       }
 
@@ -312,7 +395,8 @@ async function generateSegment(
       await new Promise(resolve => setTimeout(resolve, delay));
       return generateSegment(
         categoryId, topic, duration, segmentIndex, totalSegments,
-        globalOutline, previousSummary, affiliateInput, retryCount + 1, signal
+        globalOutline, previousSummary, affiliateInput, retryCount + 1, signal,
+        staticHookEntries, dynamicHookEntries, trendingProduct, explicitConfig
       );
     }
     throw error;
@@ -334,11 +418,55 @@ function generateSegmentSummary(scenes: Scene[], segmentIndex: number): string {
 
 /**
  * Generate the global outline (first call before segments)
+ * Menerima explicitConfig opsional — untuk custom category, config yang sudah
+ * di-resolve dengan nicheName dikirim langsung agar tidak kena placeholder.
  */
-async function generateOutline(categoryId: CategoryId, topic: string, affiliateInput?: AffiliateInput, signal?: AbortSignal): Promise<string> {
-  const config = getCategoryConfig(categoryId);
+async function generateOutline(
+  categoryId: CategoryId,
+  topic: string,
+  affiliateInput?: AffiliateInput,
+  signal?: AbortSignal,
+  explicitConfig?: CategoryConfig
+): Promise<string> {
+  const config = resolveConfig(categoryId, explicitConfig);
+  const skeleton = getScriptSkeleton(config);
 
-  const prompt = `Buat outline 3-5 kalimat untuk cerita ${categoryId === 'affiliate' ? 'review produk' : categoryId} dengan topik: "${topic}"
+  let prompt: string;
+
+  if (skeleton === 'informational_arc') {
+    prompt = `Buat outline 3-5 poin untuk konten ${categoryId === 'affiliate' ? 'review produk' : categoryId} dengan topik: "${topic}"
+
+${categoryId === 'affiliate' && affiliateInput ? `
+DATA PRODUK:
+${affiliateInput.productDescription ? `Deskripsi: ${affiliateInput.productDescription}` : ''}
+${affiliateInput.reviews && affiliateInput.reviews.length > 0 ? `Ulasan: ${affiliateInput.reviews.join('\n')}` : ''}
+` : ''}
+
+Outline harus mencakup:
+- Poin-poin utama yang akan dibahas (bukan alur cerita)
+- Urutan penyampaian yang logis dari yang paling penting ke pendukung
+- Satu takeaway kunci yang harus didapat penonton
+
+Format: teks biasa, 3-5 poin saja. Setiap poin dalam 1 kalimat jelas.`;
+  } else if (skeleton === 'factual_narrative') {
+    prompt = `Buat outline 3-5 kalimat untuk konten sejarah dengan topik: "${topic}"
+
+${categoryId === 'affiliate' && affiliateInput ? `
+DATA PRODUK:
+${affiliateInput.productDescription ? `Deskripsi: ${affiliateInput.productDescription}` : ''}
+${affiliateInput.reviews && affiliateInput.reviews.length > 0 ? `Ulasan: ${affiliateInput.reviews.join('\n')}` : ''}
+` : ''}
+
+Outline harus mencakup:
+- Peristiwa/tokoh nyata yang akan dibahas
+- Kronologi waktu yang akurat (tahun, periode)
+- Dampak peristiwa tersebut ke masa kini
+- Mood dominan
+
+Format: teks biasa, 3-5 kalimat saja. Kronologis berdasarkan fakta sejarah.`;
+  } else {
+    // narrative_arc (default untuk horror, misteri, romance)
+    prompt = `Buat outline 3-5 kalimat untuk cerita ${categoryId === 'affiliate' ? 'review produk' : categoryId} dengan topik: "${topic}"
 
 ${categoryId === 'affiliate' && affiliateInput ? `
 DATA PRODUK:
@@ -353,11 +481,16 @@ Outline harus mencakup:
 - Mood dominan
 
 Format: teks biasa, 3-5 kalimat saja.`;
+  }
+
+  const systemContent = skeleton === 'informational_arc'
+    ? `Kamu adalah penulis script ${config.name} Indonesia. Buat outline berupa poin-poin informatif.`
+    : `Kamu adalah penulis script ${config.name} Indonesia. Buat outline singkat.`;
 
   const result = await aiCompletion({
     model: MODEL!,
     messages: [
-      { role: 'system', content: `Kamu adalah penulis script ${config.name} Indonesia. Buat outline singkat.` },
+      { role: 'system', content: systemContent },
       { role: 'user', content: prompt },
     ],
     response_format: { type: 'text' },
@@ -382,8 +515,6 @@ export async function generateScript(
   nicheName?: string
 ): Promise<{ scenes: Scene[]; failedSegment?: number; hookPatternUsed?: string }> {
   // Cek cache — DINONAKTIFKAN untuk script generation agar setiap generate unik
-  // Jika ingin re-enable, uncomment baris di bawah dan pastikan cache key
-  // include randomization (hook angle / timestamp) agar user berbeda tidak dapat hasil identik.
   // const cacheKey = getCacheKey(categoryId, topic, duration, affiliateInput);
   // const cached = getFromCache(cacheKey);
   // if (cached) {
@@ -396,62 +527,56 @@ export async function generateScript(
 
   try {
     // Step -1: Untuk affiliate, ambil data trending product dari TrendTracker
-    // Fallback: kalau API down/timeout, trendingProduct = null (mode lama)
     let trendingProduct: TrendingProduct | null = null;
     if (categoryId === 'affiliate') {
       try {
-        // Cari trending product berdasarkan topic user (keyword match)
         trendingProduct = await fetchTrendingProduct(topic);
         if (trendingProduct) {
           console.log(`[TrendTracker] Got trending product: ${trendingProduct.name} (match: "${topic}")`);
         } else {
           console.log('[TrendTracker] No trending product found for topic, will use random from top 5');
-          // Coba random — fetchTrendingProduct(topic) already falls back to random if no match
           trendingProduct = await fetchTrendingProduct(undefined);
           if (trendingProduct) {
             console.log(`[TrendTracker] Fallback random product: ${trendingProduct.name}`);
           }
         }
       } catch (error) {
-        // Graceful fallback: jangan sampai error TrendTracker mengganggu fitur lain
         console.warn('[TrendTracker] Failed to fetch trending product — using legacy mode');
         trendingProduct = null;
       }
     }
 
-    // Step 0: Untuk kategori custom, gunakan config dinamis dengan niche name
-    // Untuk kategori lain, gunakan config statis dari file kategori
+    // Step 0: Resolve config — untuk custom, pakai getCustomCategoryConfig dengan nicheName.
+    // Config ini diteruskan sebagai explicitConfig ke generateOutline, generateSegment, dll
+    // untuk mencegah mereka memanggil getCategoryConfig('custom') yang mengembalikan placeholder.
     const config = categoryId === 'custom' && nicheName
       ? getCustomCategoryConfig(nicheName)
       : getCategoryConfig(categoryId);
 
+    const explicitConfig: CategoryConfig | undefined = (categoryId === 'custom' && nicheName) ? config : undefined;
+
     // Ambil data dynamic hooks dari crawl (top performing patterns)
-    // Untuk custom kategori, getTopHooks akan return [] karena tidak ada cron untuknya
     const dynamicHooks = await getTopHooks(categoryId);
 
     // Bangun HookEntry untuk static hooks (dari file kategori)
-    // patternValue dideteksi sekali via detectHookType(), bukan re-parse di report
     const staticHookEntries: HookEntry[] = (config.hookAngles ?? []).map(text => ({
       text,
       patternValue: detectHookType(text),
     }));
 
-    // Bangun HookEntry untuk dynamic hooks (dari pattern_insights — patternValue sudah pasti akurat)
+    // Bangun HookEntry untuk dynamic hooks
     const dynamicHookEntries: HookEntry[] = dynamicHooks.map(h => ({
       text: h.angle,
       patternValue: h.patternValue as HookPatternType,
     }));
 
-    // Step 1: Generate outline (sequential — wajib)
-    onProgress?.({ status: 'generating_outline', message: 'Membuat outline cerita...' });
-    const globalOutline = await generateOutline(categoryId, topic, affiliateInput, signal);
+    // Step 1: Generate outline — kirim explicitConfig untuk custom
+    onProgress?.({ status: 'generating_outline', message: 'Membuat outline...' });
+    const globalOutline = await generateOutline(categoryId, topic, affiliateInput, signal, explicitConfig);
 
     // Step 2: Generate segments
-    // Segment 1: sequential (has the hook, needs full outline context)
-    // Segments 2+: parallel (each gets the full outline + segment 1 summary)
     const allScenes: Scene[] = [];
 
-    // Cek cancel sebelum mulai
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
     }
@@ -468,7 +593,7 @@ export async function generateScript(
       segment1 = await generateSegment(
         categoryId, topic, duration, 0, totalSegments,
         globalOutline, '', affiliateInput, 0, signal,
-        staticHookEntries, dynamicHookEntries, trendingProduct
+        staticHookEntries, dynamicHookEntries, trendingProduct, explicitConfig
       );
       allScenes.push(...segment1.scenes);
     } catch (error) {
@@ -481,13 +606,11 @@ export async function generateScript(
         error: error instanceof Error ? error.message : 'Unknown error',
       });
       const result = { scenes: allScenes, failedSegment: 1 };
-      // setCache(cacheKey, result); // cache disabled
       return result;
     }
 
     // Generate segments 2+ in parallel (if any)
     if (totalSegments > 1) {
-      // Cek cancel sebelum parallel
       if (signal?.aborted) {
         throw new DOMException('Aborted', 'AbortError');
       }
@@ -505,35 +628,30 @@ export async function generateScript(
           generateSegment(
             categoryId, topic, duration, i, totalSegments,
             globalOutline, segment1.summary, affiliateInput, 0, signal,
-            staticHookEntries, dynamicHookEntries, trendingProduct
+            staticHookEntries, dynamicHookEntries, trendingProduct, explicitConfig
           ).then(result => ({ ...result, index: i }))
         );
       }
 
-      // Wait for all parallel segments with a timeout per segment
       const results = await Promise.allSettled(segmentPromises);
 
-      // Process results in order
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
-        const segIndex = i + 2; // 2-based
+        const segIndex = i + 2;
 
         if (result.status === 'fulfilled') {
           allScenes.push(...result.value.scenes);
         } else {
           const error = result.reason;
-          // AbortError: propagate up
           if (error instanceof DOMException && error.name === 'AbortError') {
             throw error;
           }
-          // Partial failure: return what we have
           onProgress?.({
             status: 'error',
             message: `Gagal di bagian ${segIndex} dari ${totalSegments}`,
             error: error instanceof Error ? error.message : 'Unknown error',
           });
           const failResult = { scenes: allScenes, failedSegment: segIndex };
-          // setCache(cacheKey, failResult); // cache disabled
           return failResult;
         }
       }
@@ -544,8 +662,6 @@ export async function generateScript(
     const validatedScenes = validateScriptScenes(allScenes, config);
 
     // ===== PROGRAMMATIC DISCLAIMER: Keuangan =====
-    // Disclaimer wajib untuk kategori keuangan — APPEND sebagai scene terakhir
-    // (tidak tergantung LLM compliance, dijamin selalu ada)
     let finalScenes = validatedScenes;
     if (categoryId === 'keuangan') {
       finalScenes = [
@@ -559,13 +675,27 @@ export async function generateScript(
       ];
     }
 
+    // Tandai scene terakhir sebagai is_conclusion
+    if (finalScenes.length > 0) {
+      finalScenes[finalScenes.length - 1] = {
+        ...finalScenes[finalScenes.length - 1],
+        is_conclusion: true,
+      };
+    }
+
+    // Validasi closing scene — log peringatan jika ada masalah, tapi tidak throw
+    // agar tidak mengganggu user experience. Validasi ini bersifat safeguard,
+    // bukan gatekeeper (masih ada AI prompt yang mengarahkan closing).
+    const closingValidation = validateClosingScene(finalScenes);
+    if (!closingValidation.valid) {
+      console.warn(`[ClosingValidation] ${categoryId}: ${closingValidation.errors.join('; ')}`);
+    }
+
     onProgress?.({ status: 'done', message: 'Script selesai dibuat!' });
     const finalResult: { scenes: Scene[]; hookPatternUsed?: string } = { scenes: finalScenes };
     if (segment1.selectedPatternValue) {
-      // Simpan pattern_value enum (bukan teks panjang) untuk query akurat di report
       finalResult.hookPatternUsed = segment1.selectedPatternValue;
     }
-    // setCache(cacheKey, finalResult); // cache disabled
     return finalResult;
   } catch (error) {
     onProgress?.({

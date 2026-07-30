@@ -196,5 +196,116 @@ export function validateContentRules(scenes: Scene[], categoryId: string): { val
   return { valid: true, flaggedSceneIndices: [] };
 }
 
+/**
+ * Frasa generic kosong yang menandakan closing tidak bermakna.
+ * Deteksi: jika narasi diawali frasa ini dan sisa setelahnya tidak mengandung
+ * elemen konkret (angka, kata kerja aksi, rekomendasi), maka dianggap generic.
+ */
+const EMPTY_CLOSING_PHRASES = [
+  'sekian',
+  'itulah tadi',
+  'cukup sekian',
+  'terima kasih',
+  'sampai jumpa',
+  'sekian dari saya',
+  'sekian dulu',
+  'itu aja',
+  'itu saja',
+  'begitulah',
+  'begitu saja',
+  'cukup',
+];
+
+/**
+ * Pola elemen konkret yang menandakan closing punya substansi:
+ * - Angka (Rp, %, nominal, tahun)
+ * - Kata kerja aksi imperatif (coba, lakukan, mulai, gunakan, ikuti, buat, ambil, pilih)
+ * - Rekomendasi spesifik (link, follow, subscribe, cek, klik, kunjungi)
+ * - Kata tanya cliffhanger yang menunjukkan kelanjutan (apa, bagaimana, kenapa, siapa)
+ */
+const CONCRETE_ELEMENTS = [
+  /\d+/,           // angka
+  /\brp\b/i,       // rupiah
+  /\b%\b/,         // persen
+  /\bcoba\b/i,     // kata kerja aksi
+  /\blakukan\b/i,
+  /\bmulai\b/i,
+  /\bgunakan\b/i,
+  /\bikuti\b/i,
+  /\bbuat\b/i,
+  /\bambil\b/i,
+  /\bpilih\b/i,
+  /\btunggu\b/i,
+  /\bfollow\b/i,   // follow hook
+  /\bsubscribe\b/i,
+  /\bcek\b/i,
+  /\blink\b/i,
+  /\bapa\b/i,      // kata tanya cliffhanger
+  /\bkenapa\b/i,
+  /\bbagaimana\b/i,
+  /\bsiapa\b/i,
+];
+
+/**
+ * Validasi scene closing (scene terakhir yang ditandai is_conclusion).
+ * Mengecek:
+ * 1. Scene terakhir punya is_conclusion=true
+ * 2. Narasi tidak kosong/generic (minimal 30 karakter + mengandung elemen konkret)
+ *
+ * Heuristik generic detection:
+ * - Jika narasi DIAWALI frasa generic (EMPTY_CLOSING_PHRASES), maka sisa setelah
+ *   frasa tersebut HARUS mengandung minimal 1 elemen konkret (angka, kata kerja aksi,
+ *   rekomendasi, atau kata tanya cliffhanger).
+ * - Threshold panjang sisa TIDAK digunakan karena mudah dieksploitasi dengan
+ *   menambahkan kalimat pengisi tanpa substansi (misal "itulah tadi cerita tentang
+ *   fenomena ini" — panjang >10 karakter tapi tetap generic secara makna).
+ * - Sebaliknya, deteksi elemen konkret memastikan closing benar-benar mengandung
+ *   takeaway actionable atau cliffhanger yang bermakna.
+ */
+export function validateClosingScene(scenes: Scene[]): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (scenes.length === 0) {
+    return { valid: false, errors: ['Tidak ada scene sama sekali'] };
+  }
+
+  const lastScene = scenes[scenes.length - 1];
+
+  // Cek is_conclusion
+  if (!lastScene.is_conclusion) {
+    errors.push('Scene terakhir tidak ditandai is_conclusion=true');
+  }
+
+  // Cek narasi tidak kosong
+  const narration = (lastScene.narration || '').trim();
+  if (narration.length === 0) {
+    errors.push('Scene closing memiliki narasi kosong');
+    return { valid: errors.length === 0, errors };
+  }
+
+  // Cek minimal panjang karakter (30 karakter)
+  if (narration.length < 30) {
+    errors.push(`Scene closing terlalu pendek (${narration.length} karakter, minimal 30)`);
+  }
+
+  // Cek apakah narasi diawali frasa generic dan tidak mengandung elemen konkret
+  const lowerNarration = narration.toLowerCase();
+  const trimmed = lowerNarration.replace(/[^a-z\s]/g, '').trim();
+
+  const startsWithGeneric = EMPTY_CLOSING_PHRASES.some(phrase => {
+    return trimmed === phrase || trimmed.startsWith(phrase);
+  });
+
+  if (startsWithGeneric) {
+    // Jika diawali frasa generic, cek apakah sisa mengandung elemen konkret
+    const hasConcrete = CONCRETE_ELEMENTS.some(pattern => pattern.test(narration));
+    if (!hasConcrete) {
+      errors.push('Scene closing diawali frasa generic tanpa elemen konkret (angka/aksi/rekomendasi)');
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
 /* validation failure counters (module-level) */
 export const validationFailureCounters: Record<string, number> = {};

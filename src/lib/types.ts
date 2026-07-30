@@ -11,12 +11,37 @@ export type Mood =
 /** Hook pattern type — cocok dengan pattern_insights.pattern_value untuk hook_type */
 export type HookPatternType = 'pertanyaan' | 'angka' | 'clickbait_kata' | 'netral';
 
+/**
+ * Tipe skeleton alur konten:
+ * - narrative_arc: alur cerita fiksi dengan tokoh, konflik, twist (horror, misteri, romance)
+ * - factual_narrative: kronologi kejadian nyata tanpa tokoh fiksi (sejarah)
+ * - informational_arc: poin-poin informatif yang berdiri sendiri, bukan kelanjutan dramatis (psikologi, motivasi, edukasi, keuangan, affiliate)
+ */
+export type ScriptSkeleton = 'narrative_arc' | 'factual_narrative' | 'informational_arc';
+
+/**
+ * Mode penutup naskah:
+ * - actionable_takeaway: scene terakhir berisi satu poin kesimpulan konkret yang bisa langsung dipraktikkan
+ * - cliffhanger_follow: scene terakhir berisi elemen emosional belum terselesaikan + ajakan implisit follow
+ */
+export type ClosingMode = 'actionable_takeaway' | 'cliffhanger_follow';
+
+export interface NarratorPersona {
+  name: string;
+  tone: string;
+  sentenceRhythm: string;
+  signaturePhrases: string[];
+  avoidWords: string[];
+}
+
 export interface Scene {
   narration: string;
   scene_mood: string;
   image_prompt: string;
   is_hook: boolean;
   flagged?: boolean;
+  /** true jika ini scene penutup (terakhir) dari naskah */
+  is_conclusion?: boolean;
 }
 
 export interface ScriptOutput {
@@ -42,6 +67,12 @@ export interface CategoryConfig {
    *  false = konten informatif langsung (keuangan, edukasi) — LLM dilarang membuat nama karakter
    *  true = konten berbasis cerita/karakter (horror, romance, misteri, dll) — LLM boleh membuat karakter */
   usesFictionalCharacter?: boolean;
+  /** Bentuk alur konten — membedakan cara AI menyusun outline dan segmen */
+  scriptSkeleton: ScriptSkeleton;
+  /** Persona narator — gaya bicara khas per kategori */
+  narratorPersona: NarratorPersona;
+  /** Mode penutup naskah — menentukan instruksi closing ke AI */
+  closingMode: ClosingMode;
 }
 
 export interface DurationConfig {

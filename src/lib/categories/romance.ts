@@ -10,6 +10,26 @@ export const romanceConfig: CategoryConfig = {
   styleSuffix: ', warm cinematic illustration, soft romantic lighting, pastel color palette, emotional atmosphere',
   temperature: 0.75,
   usesFictionalCharacter: true,
+  scriptSkeleton: 'narrative_arc',
+  closingMode: 'cliffhanger_follow',
+  narratorPersona: {
+    name: 'Sang Pencerita Hati',
+    tone: 'Hangat, emosional, dan intim — seperti teman yang bercerita tentang pengalaman cintanya sambil ngopi sore',
+    sentenceRhythm: 'Kalimat mengalir dengan deskripsi emosi yang detail. Sering pakai dialog pendek di tengah narasi. Ada jeda sebelum momen emosional.',
+    signaturePhrases: [
+      'Dadanya sesak...',
+      'Dia berkata...',
+      'Tapi yang nggak terduga...',
+      'Di momen itu...',
+      'Sampai akhirnya...'
+    ],
+    avoidWords: [
+      'menurut penelitian',
+      'data menunjukkan',
+      'secara statistik',
+      'faktanya'
+    ],
+  },
   exampleScenes: [
     {
       narration: 'Dia berkata, "Aku nggak bisa menunggu selamanya." Jawabanku pendek, diam sepersekian detik: "Aku juga nggak mau. Tapi untukmu? Aku tunggu." Dadanya terasa sesak, seolah nyaris tak bisa menarik napas.',

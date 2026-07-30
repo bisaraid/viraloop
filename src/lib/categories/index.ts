@@ -20,7 +20,7 @@ const categoryMap: Record<CategoryId, CategoryConfig> = {
   misteri: misteriConfig,
   sejarah: sejarahConfig,
   keuangan: keuanganConfig,
-  custom: createCustomConfig(''), // placeholder, will be overridden when used
+  custom: createCustomConfig(''), // placeholder, will be overridden when used via getCustomCategoryConfig()
 };
 
 export const allCategories: CategoryConfig[] = Object.values(categoryMap);

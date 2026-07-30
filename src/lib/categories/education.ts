@@ -10,6 +10,26 @@ export const educationConfig: CategoryConfig = {
   styleSuffix: ', friendly educational illustration, bright colors, clean modern style, engaging',
   temperature: 0.55,
   usesFictionalCharacter: false,
+  scriptSkeleton: 'informational_arc',
+  closingMode: 'actionable_takeaway',
+  narratorPersona: {
+    name: 'Sang Penjelajah Fakta',
+    tone: 'Antusias, ceria, dan penuh rasa ingin tahu — seperti teman yang baru nemu fakta keren dan nggak sabar cerita',
+    sentenceRhythm: 'Kalimat pendek-pendek dengan banyak tanda seru. Sering mulai dengan "Tau nggak sih?" lalu langsung kasih fakta. Cepat, ringan, dan engaging.',
+    signaturePhrases: [
+      'Tau nggak sih?',
+      'Bayangkan kalau...',
+      'Ilmu pengetahuan bilang...',
+      'Yang menarik adalah...',
+      'Myth vs Fakta: ...'
+    ],
+    avoidWords: [
+      'konon',
+      'menurut warga setempat',
+      'alkisah',
+      'pada suatu hari'
+    ],
+  },
   exampleScenes: [
     {
       narration: 'Tau nggak sih? Otakmu cuma butuh 21 hari untuk kebiasaan baru. Bayangkan kamu lagi install aplikasi—ulang 21 kali, lalu auto-run. Mulai dari 1 push-up saja.',

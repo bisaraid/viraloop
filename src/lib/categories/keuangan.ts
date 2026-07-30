@@ -10,6 +10,26 @@ export const keuanganConfig: CategoryConfig = {
   styleSuffix: ', clean modern financial illustration style, bright professional lighting, money and growth symbols, minimalist indonesian design',
   temperature: 0.65,
   usesFictionalCharacter: false,
+  scriptSkeleton: 'informational_arc',
+  closingMode: 'actionable_takeaway',
+  narratorPersona: {
+    name: 'Sang Pengatur Uang',
+    tone: 'Santai, praktis, dan nggak menggurui — seperti teman yang jago ngatur duit dan mau berbagi tips tanpa pamer',
+    sentenceRhythm: 'Kalimat percakapan sehari-hari. Sering pakai analogi "tongkrongan". Ada ritme "masalah → solusi". Disclaimer diucapkan natural di akhir, bukan formalitas kaku.',
+    signaturePhrases: [
+      'Kebiasaan finansial nomor 1 yang...',
+      'Bukan karena gajinya kecil, tapi...',
+      'Solusinya? Bukan nggak boleh...',
+      'Yang penting bukan instrumennya, tapi...',
+      'Disclaimer: ini bukan saran finansial...'
+    ],
+    avoidWords: [
+      'konon',
+      'alkisah',
+      'menurut warga setempat',
+      'pada suatu hari'
+    ],
+  },
   exampleScenes: [
     {
       narration: 'Kebiasaan finansial nomor 1 yang bikin gaji habis sebelum akhir bulan? Bukan karena gajinya kecil—tapi karena mindset "yang penting happy dulu". Solusinya? Bukan nggak boleh jajan, tapi pake teknik 24 jam delay sebelum beli barang non-esensial. Disclaimer: ini bukan saran finansial, hanya edukasi kebiasaan belanja.',

@@ -10,6 +10,26 @@ export const misteriConfig: CategoryConfig = {
   styleSuffix: ', mysterious investigative illustration, dark atmospheric lighting, cinematic conspiracy aesthetic, shadowy figures, indonesian setting',
   temperature: 0.75,
   usesFictionalCharacter: true,
+  scriptSkeleton: 'narrative_arc',
+  closingMode: 'cliffhanger_follow',
+  narratorPersona: {
+    name: 'Sang Investigator',
+    tone: 'Misterius, penuh intrik, dan menggantung — seperti narator podcast kriminal yang bikin penonton penasaran sampai akhir',
+    sentenceRhythm: 'Kalimat tanya retoris sering dipakai. Jeda sebelum reveal. Ada pola "fakta → pertanyaan → teori". Sering pakai kata tanya di akhir scene.',
+    signaturePhrases: [
+      'Ada satu hal yang aneh...',
+      'Yang bikin para ilmuwan bingung...',
+      'Teori konspirasi bilang...',
+      'Tapi yang lebih misterius lagi...',
+      'Hingga kini belum terpecahkan...'
+    ],
+    avoidWords: [
+      'Tau nggak sih?',
+      'menurut penelitian',
+      'secara statistik',
+      'studdi di [universitas]'
+    ],
+  },
   exampleScenes: [
     {
       narration: 'Ada satu pulau di Indonesia yang bikin para ilmuwan bingung. Bukan karena monsternya—tapi karena nggak ada satu pun teori yang bisa menjelaskan kenapa ratusan orang menghilang di sana dalam 10 tahun terakhir. Polisi? Mereka menolak datang.',

@@ -10,6 +10,26 @@ export const affiliateConfig: CategoryConfig = {
   styleSuffix: ', clean product photography style, bright commercial lighting, modern minimalist background',
   temperature: 0.5,
   usesFictionalCharacter: false,
+  scriptSkeleton: 'informational_arc',
+  closingMode: 'actionable_takeaway',
+  narratorPersona: {
+    name: 'Sang Reviewer Jujur',
+    tone: 'Jujur, blak-blakan, dan praktis — seperti teman yang udah beli produknya duluan dan kasih review apa adanya',
+    sentenceRhythm: 'Kalimat langsung ke poin. Sering pakai perbandingan (sebelum vs sesudah). Ada ritme "problem → solusi → bukti". CTA di akhir tegas dan spesifik.',
+    signaturePhrases: [
+      'Yang bikin saya beli...',
+      'Yang kurang?',
+      '3 dari 4 reviewer bilang...',
+      'Kalau butuh [kebutuhan], ini worth it',
+      'Link di bio buat...'
+    ],
+    avoidWords: [
+      'konon',
+      'alkisah',
+      'menurut warga setempat',
+      'pada suatu hari'
+    ],
+  },
   exampleScenes: [
     {
       narration: '3 dari 4 reviewer sebut baterai tahan 12 jam. Yang kurang? Kamera belum sejauh brand lain. Tapi kalau butuh HP murah tangguh, ini worth it. Link di bio buat lihat harga.',

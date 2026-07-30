@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateSceneMood, parseScriptJson } from '../script-validator';
+import { validateSceneMood, parseScriptJson, validateClosingScene } from '../script-validator';
 import type { Scene, CategoryConfig } from '../types';
 
 describe('validateSceneMood', () => {
@@ -70,5 +70,94 @@ describe('parseScriptJson', () => {
   it('should return null for invalid input', () => {
     const result = parseScriptJson('not json at all');
     expect(result).toBeNull();
+  });
+});
+
+describe('validateClosingScene', () => {
+  it('should pass valid closing scene with is_conclusion and meaningful narration', () => {
+    const scenes: Scene[] = [
+      { narration: 'Scene biasa', scene_mood: 'fakta', image_prompt: 'test', is_hook: false },
+      { narration: 'Coba lakukan teknik 5 detik ini sebelum ngomong: tarik napas, tahan, lalu bicara. Dijamin kamu lebih pede.', scene_mood: 'terang', image_prompt: 'test', is_hook: false, is_conclusion: true },
+    ];
+    const result = validateClosingScene(scenes);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('should fail when last scene lacks is_conclusion', () => {
+    const scenes: Scene[] = [
+      { narration: 'Scene biasa', scene_mood: 'fakta', image_prompt: 'test', is_hook: false },
+      { narration: 'Narasi penutup', scene_mood: 'terang', image_prompt: 'test', is_hook: false },
+    ];
+    const result = validateClosingScene(scenes);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Scene terakhir tidak ditandai is_conclusion=true');
+  });
+
+  it('should fail when closing scene has empty narration', () => {
+    const scenes: Scene[] = [
+      { narration: 'Scene biasa', scene_mood: 'fakta', image_prompt: 'test', is_hook: false },
+      { narration: '', scene_mood: 'terang', image_prompt: 'test', is_hook: false, is_conclusion: true },
+    ];
+    const result = validateClosingScene(scenes);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Scene closing memiliki narasi kosong');
+  });
+
+  it('should fail when closing scene is too short (< 30 chars)', () => {
+    const scenes: Scene[] = [
+      { narration: 'Scene biasa', scene_mood: 'fakta', image_prompt: 'test', is_hook: false },
+      { narration: 'Sekian', scene_mood: 'terang', image_prompt: 'test', is_hook: false, is_conclusion: true },
+    ];
+    const result = validateClosingScene(scenes);
+    expect(result.valid).toBe(false);
+    expect(result.errors.some(e => e.includes('terlalu pendek'))).toBe(true);
+  });
+
+  it('should fail when closing scene starts with generic phrase and has no concrete element', () => {
+    const scenes: Scene[] = [
+      { narration: 'Scene biasa', scene_mood: 'fakta', image_prompt: 'test', is_hook: false },
+      { narration: 'itulah tadi cerita tentang fenomena ini', scene_mood: 'terang', image_prompt: 'test', is_hook: false, is_conclusion: true },
+    ];
+    const result = validateClosingScene(scenes);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Scene closing diawali frasa generic tanpa elemen konkret (angka/aksi/rekomendasi)');
+  });
+
+  it('should pass when closing starts with generic phrase but has concrete element (angka)', () => {
+    const scenes: Scene[] = [
+      { narration: 'Scene biasa', scene_mood: 'fakta', image_prompt: 'test', is_hook: false },
+      { narration: 'itulah tadi 3 cara yang bisa kamu coba mulai besok pagi', scene_mood: 'terang', image_prompt: 'test', is_hook: false, is_conclusion: true },
+    ];
+    const result = validateClosingScene(scenes);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('should pass when closing starts with generic phrase but has concrete element (kata kerja aksi)', () => {
+    const scenes: Scene[] = [
+      { narration: 'Scene biasa', scene_mood: 'fakta', image_prompt: 'test', is_hook: false },
+      { narration: 'itulah tadi cara mengatur keuangan. Coba mulai dengan menabung 10% dari gaji.', scene_mood: 'terang', image_prompt: 'test', is_hook: false, is_conclusion: true },
+    ];
+    const result = validateClosingScene(scenes);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('should fail when scenes array is empty', () => {
+    const scenes: Scene[] = [];
+    const result = validateClosingScene(scenes);
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('Tidak ada scene sama sekali');
+  });
+
+  it('should pass valid cliffhanger closing scene', () => {
+    const scenes: Scene[] = [
+      { narration: 'Scene biasa', scene_mood: 'mencekam', image_prompt: 'test', is_hook: false },
+      { narration: 'Pintu itu terbuka perlahan. Tapi yang keluar bukan manusia. Mau tahu apa yang terjadi selanjutnya? Follow biar nggak ketinggalan.', scene_mood: 'misterius', image_prompt: 'test', is_hook: false, is_conclusion: true },
+    ];
+    const result = validateClosingScene(scenes);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 });
