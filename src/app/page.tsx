@@ -64,9 +64,11 @@ export default function Home() {
   const [isInstantPreviewing, setIsInstantPreviewing] = useState(false);
 
   const formRef = useRef<HTMLDivElement>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const prevHasResultRef = useRef(false);
 
   // Cleanup ObjectURL saat komponen unmount
   useEffect(() => {
@@ -371,6 +373,20 @@ export default function Home() {
     }
   }, [category]);
 
+  // Auto-scroll ke hasil setelah generate selesai (semua breakpoint)
+  useEffect(() => {
+    if (hasResult && !prevHasResultRef.current && resultRef.current) {
+      const timer = setTimeout(() => {
+        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 150);
+      prevHasResultRef.current = true;
+      return () => clearTimeout(timer);
+    }
+    if (!hasResult) {
+      prevHasResultRef.current = false;
+    }
+  }, [hasResult]);
+
   return (
     <div className="space-y-6">
       {/* ===== BAGIAN ATAS: INPUT ===== */}
@@ -428,7 +444,7 @@ export default function Home() {
             onDurationChange={(value) => setDuration(value)}
           />
 
-          {/* Tombol Generate / Cancel / Buat Baru */}
+          {/* Tombol Generate / Cancel */}
           <div className="flex gap-2">
             {!hasResult && (
               <button className="btn-primary w-full text-base py-3"
@@ -442,12 +458,6 @@ export default function Home() {
               <button className="btn-secondary w-full text-base py-3"
                 onClick={handleCancel}>
                 ⏹️ Batalkan
-              </button>
-            )}
-            {hasResult && (
-              <button className="btn-primary w-full text-base py-3"
-                onClick={() => setShowNewContentDialog(true)}>
-                🆕 Buat Konten Baru
               </button>
             )}
           </div>
@@ -473,33 +483,13 @@ export default function Home() {
               {errorMessage}
             </StatusMessage>
           )}
-
-          {/* Dialog konfirmasi Buat Konten Baru */}
-          {showNewContentDialog && (
-            <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-              <div className="bg-[var(--card-bg)] border border-[var(--border)] rounded-xl p-6 max-w-sm w-full mx-4 space-y-4">
-                <h3 className="font-semibold text-lg">🆕 Buat Konten Baru</h3>
-                <p className="text-sm text-[var(--muted-foreground)]">
-                  Script dan audio akan dihapus. Lanjut?
-                </p>
-                <div className="flex gap-2">
-                  <button className="btn-secondary flex-1" onClick={() => setShowNewContentDialog(false)}>
-                    Batal
-                  </button>
-                  <button className="btn-primary flex-1" onClick={handleNewContent}>
-                    Ya, Buat Baru
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
         )}
       </div>
 
       {/* ===== BAGIAN BAWAH: HASIL ===== */}
       {hasResult && (
-        <div className="space-y-4">
+        <div ref={resultRef} className="space-y-4">
           <ScriptResult
             scenes={scenes}
             failedSegment={failedSegment}
@@ -508,6 +498,12 @@ export default function Home() {
             textAreaRef={textAreaRef as React.RefObject<HTMLTextAreaElement>}
             onCopyText={handleCopyText}
           />
+
+          {/* Tombol Buat Konten Baru — di bawah ScriptResult, sebelum AudioPanel */}
+          <button className="btn-primary w-full text-base py-3"
+            onClick={() => setShowNewContentDialog(true)}>
+            🆕 Buat Konten Baru
+          </button>
 
           <AudioPanel
             scenes={scenes}
@@ -537,6 +533,26 @@ export default function Home() {
             expandedScene={expandedScene}
             onToggleExpand={(i) => setExpandedScene(expandedScene === i ? null : i)}
           />
+        </div>
+      )}
+
+      {/* Modal konfirmasi Buat Konten Baru — di ROOT level, di luar card manapun */}
+      {showNewContentDialog && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+          <div className="bg-[var(--card-bg)] border border-[var(--border)] rounded-xl p-6 max-w-sm w-full mx-4 space-y-4">
+            <h3 className="font-semibold text-lg">🆕 Buat Konten Baru</h3>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              Script dan audio akan dihapus. Lanjut?
+            </p>
+            <div className="flex gap-2">
+              <button className="btn-secondary flex-1" onClick={() => setShowNewContentDialog(false)}>
+                Batal
+              </button>
+              <button className="btn-primary flex-1" onClick={handleNewContent}>
+                Ya, Buat Baru
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

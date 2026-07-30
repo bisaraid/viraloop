@@ -144,12 +144,11 @@ export default function AudioPanel({
         <div className="space-y-3">
           <div>
             <label className="label">Bahasa</label>
-            <select className="select-field" value={googleSettings.lang}
-              onChange={(e) => onGoogleSettingsChange({ ...googleSettings, lang: e.target.value })}>
-              <option value="id">Bahasa Indonesia</option>
-              <option value="en">English</option>
-              <option value="ja">Japanese</option>
-            </select>
+              <select className="select-field" value={googleSettings.lang}
+                onChange={(e) => onGoogleSettingsChange({ ...googleSettings, lang: e.target.value })}>
+                <option value="id">Bahasa Indonesia</option>
+                <option value="en">English</option>
+              </select>
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="slowMode" checked={googleSettings.slow}
