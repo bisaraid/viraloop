@@ -66,6 +66,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate affiliate input
+    if (category === 'affiliate') {
+      if (!affiliateInput || !affiliateInput.productName || !affiliateInput.productDescription) {
+        return NextResponse.json(
+          { success: false, error: 'Untuk kategori affiliate, field productName dan productDescription wajib diisi' },
+          { status: 400 }
+        );
+      }
+      // Untuk mode perbandingan (long), cek comparisonProducts
+      if (duration === 'long' && affiliateInput.comparisonProducts && affiliateInput.comparisonProducts.length > 0) {
+        if (affiliateInput.comparisonProducts.length > 3) {
+          return NextResponse.json(
+            { success: false, error: 'Maksimal 3 produk untuk mode perbandingan' },
+            { status: 400 }
+          );
+        }
+        for (const p of affiliateInput.comparisonProducts) {
+          if (!p.productName || !p.productDescription) {
+            return NextResponse.json(
+              { success: false, error: 'Setiap produk perbandingan wajib memiliki productName dan productDescription' },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    }
+
     // Validate category
     const validCategories: CategoryId[] = ['horror', 'psikologi', 'romance', 'motivasi', 'edukasi', 'affiliate', 'misteri', 'sejarah', 'keuangan', 'custom'];
     if (!validCategories.includes(category)) {

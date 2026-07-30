@@ -3,8 +3,8 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { allCategories } from '@/lib/categories';
 import { durationOptions } from '@/lib/duration';
-import { CategoryId, DurationTier, Scene, AffiliateInput, TTSProviderId, CartesiaSettings, ElevenLabsSettings, GTTSSettings } from '@/lib/types';
-import { getCategoryEmoji } from '@/lib/utils/category';
+import { CategoryId, DurationTier, Scene, AffiliateInput, TTSProviderId, CartesiaSettings, ElevenLabsSettings, GTTSSettings, AffiliateProductBasic } from '@/lib/types';
+// getCategoryEmoji import removed — no longer needed
 
 export default function Home() {
   // Input state
@@ -18,8 +18,9 @@ export default function Home() {
   const [selectedIdea, setSelectedIdea] = useState<string | null>(null);
   const [trendingFailed, setTrendingFailed] = useState(false);
   const [affiliateInput, setAffiliateInput] = useState<AffiliateInput>({
-    productUrl: '', productDescription: '', productPrice: '', reviews: [''],
+    productName: '', productDescription: '', productPrice: '', productRating: undefined,
   });
+  const [comparisonProducts, setComparisonProducts] = useState<AffiliateProductBasic[]>([]);
 
   // Result state
   const [scenes, setScenes] = useState<Scene[]>([]);
@@ -28,10 +29,6 @@ export default function Home() {
   const [progressMsg, setProgressMsg] = useState('');
   const [progressSeg, setProgressSeg] = useState<{ current: number; total: number } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
-  // Scraping state
-  const [isScraping, setIsScraping] = useState(false);
-  const [scrapeError, setScrapeError] = useState('');
-  const [showManualFallback, setShowManualFallback] = useState(false);
   const [expandedScene, setExpandedScene] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
@@ -72,6 +69,7 @@ export default function Home() {
   const selectedCategory = allCategories.find(c => c.id === category);
   const isAffiliate = category === 'affiliate';
   const hasResult = scenes.length > 0;
+  const isComparisonMode = isAffiliate && duration === 'long';
 
   const fullNarration = scenes.map(s => s.narration).join('\n\n');
 
@@ -102,11 +100,11 @@ export default function Home() {
 
     try {
       const affInput: AffiliateInput | undefined = isAffiliate ? {
-        productUrl: affiliateInput.productUrl || undefined,
+        productName: affiliateInput.productName,
         productDescription: affiliateInput.productDescription,
-        productPrice: affiliateInput.productPrice,
-        productRating: affiliateInput.productRating,
-        reviews: (affiliateInput.reviews || []).filter(r => r.trim().length > 0),
+        productPrice: affiliateInput.productPrice || undefined,
+        productRating: affiliateInput.productRating || undefined,
+        comparisonProducts: isComparisonMode && comparisonProducts.length > 0 ? comparisonProducts : undefined,
       } : undefined;
 
       const response = await fetch('/api/generate-script', {
@@ -325,7 +323,8 @@ export default function Home() {
     setPreviewAudioUrl(null);
     setPreviewAudioError('');
     setIsCancelled(false);
-    setAffiliateInput({ productUrl: '', productDescription: '', productPrice: '', reviews: [''] });
+    setAffiliateInput({ productName: '', productDescription: '', productPrice: '', productRating: undefined });
+    setComparisonProducts([]);
     setIdeaMode('manual');
     setIdeasList([]);
     setSelectedIdea(null);
@@ -345,6 +344,22 @@ export default function Home() {
       netral: '#888', semangat: '#f97316', reflektif: '#a855f7',
     };
     return colors[mood] || '#888';
+  };
+
+  const handleAddComparisonProduct = () => {
+    if (comparisonProducts.length < 3) {
+      setComparisonProducts([...comparisonProducts, { productName: '', productDescription: '', productPrice: '', productRating: undefined }]);
+    }
+  };
+
+  const handleRemoveComparisonProduct = (index: number) => {
+    setComparisonProducts(comparisonProducts.filter((_, i) => i !== index));
+  };
+
+  const handleComparisonProductChange = (index: number, field: keyof AffiliateProductBasic, value: string | number | undefined) => {
+    const updated = [...comparisonProducts];
+    updated[index] = { ...updated[index], [field]: value };
+    setComparisonProducts(updated);
   };
 
   // Data kategori untuk card grid — 9 preset + 1 custom terpisah
@@ -539,94 +554,78 @@ export default function Home() {
             </div>
           )}
 
-          {/* Affiliate form — cukup paste URL, sisanya otomatis */}
+          {/* Affiliate form — 4 field manual, tanpa auto-scrape */}
           {isAffiliate && (
             <div className="space-y-3">
               <div>
-                <label className="label">URL Produk</label>
-                <div className="flex gap-2">
-                  <input className="input-field flex-1" placeholder="https://tokopedia.com/... atau https://shopee.co.id/..." value={affiliateInput.productUrl}
-                    onChange={(e) => setAffiliateInput({ ...affiliateInput, productUrl: e.target.value })}
-                    onBlur={async (e) => {
-                      const url = e.target.value.trim();
-                      if (!url) return;
-                      try {
-                        const parsed = new URL(url);
-                        const allowed = ['tokopedia.com', 'shopee.co.id', 'tiktok.com'];
-                        if (!allowed.some(d => parsed.hostname.includes(d))) return;
-                      } catch { return; }
-                      setIsScraping(true);
-                      setScrapeError('');
-                      try {
-                        const res = await fetch('/api/scrape-product', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ url }),
-                        });
-                        const data = await res.json();
-                        if (data.success && data.data) {
-                          const d = data.data;
-                          const desc = d.description || d.title || '';
-                          const scrapedPrice = d.price || d.currency ? (d.price || '') : '';
-                          setAffiliateInput({
-                            productUrl: url,
-                            productDescription: desc,
-                            productPrice: scrapedPrice,
-                            productRating: d.rating || undefined,
-                            reviews: d.reviewSnippets && d.reviewSnippets.length > 0
-                              ? d.reviewSnippets
-                              : [],
-                          });
-                          if (desc && !topic) {
-                            setTopic(desc);
-                          }
-                        } else {
-                          setScrapeError(data.error || 'Tidak bisa mengambil data');
-                        }
-                      } catch {
-                        setScrapeError('Gagal mengambil data produk');
-                      } finally {
-                        setIsScraping(false);
-                      }
-                    }} />
-                  {isScraping && (
-                    <div className="flex items-center">
-                      <div className="w-4 h-4 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin" />
-                    </div>
-                  )}
-                </div>
-                {scrapeError && (
-                  <p className="text-xs text-yellow-400 mt-1">{scrapeError}</p>
-                )}
-                {affiliateInput.productDescription && (
-                  <p className="text-xs text-green-400 mt-1">
-                    ✅ Data produk berhasil diambil! {affiliateInput.productPrice ? `Harga: Rp ${affiliateInput.productPrice}` : ''}
-                  </p>
-                )}
-
-                {/* Manual fallback form when scraping fails */}
-                {scrapeError && (
-                  <div className="mt-3 p-3 rounded-lg border border-yellow-800 bg-yellow-900/20 space-y-2">
-                    <p className="text-xs text-yellow-300">
-                      ⚠️ Beberapa produk (terutama dari Shopee) sulit diambil datanya otomatis. Silakan isi manual di bawah ini.
-                    </p>
-                    <div className="space-y-2">
-                      <input
-                        className="input-field text-sm"
-                        placeholder="Nama produk"
-                        value={affiliateInput.productDescription}
-                        onChange={(e) => setAffiliateInput({ ...affiliateInput, productDescription: e.target.value })}
-                      />
-                      <input
-                        className="input-field text-sm"
-                        placeholder="Harga (contoh: Rp 150.000)"
-                        value={affiliateInput.productPrice}
-                        onChange={(e) => setAffiliateInput({ ...affiliateInput, productPrice: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                )}
+                <label className="label">Nama Produk <span className="text-red-400">*</span></label>
+                <input className="input-field" placeholder="Contoh: Scarlett Whitening Serum"
+                  value={affiliateInput.productName}
+                  onChange={(e) => setAffiliateInput({ ...affiliateInput, productName: e.target.value })} />
               </div>
+              <div>
+                <label className="label">Fitur / Deskripsi Utama <span className="text-red-400">*</span></label>
+                <textarea className="textarea-field" rows={3}
+                  placeholder="Contoh: Skincare serum vitamin C, tekstur ringan, cocok kulit berminyak, kemasan 30ml"
+                  value={affiliateInput.productDescription}
+                  onChange={(e) => setAffiliateInput({ ...affiliateInput, productDescription: e.target.value })} />
+                <p className="text-xs text-[var(--muted-foreground)] mt-1">
+                  Jelaskan fitur utama produk. Semakin detail, semakin baik hasil review-nya.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Harga (opsional)</label>
+                  <input className="input-field" placeholder="Contoh: Rp 150.000"
+                    value={affiliateInput.productPrice || ''}
+                    onChange={(e) => setAffiliateInput({ ...affiliateInput, productPrice: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Rating (opsional)</label>
+                  <input className="input-field" type="number" min="0" max="5" step="0.1" placeholder="Contoh: 4.5"
+                    value={affiliateInput.productRating || ''}
+                    onChange={(e) => setAffiliateInput({ ...affiliateInput, productRating: e.target.value ? parseFloat(e.target.value) : undefined })} />
+                </div>
+              </div>
+
+              {/* Mode perbandingan (long/3 menit) — tambah produk kedua/ketiga */}
+              {isComparisonMode && (
+                <div className="space-y-3 pt-3 border-t border-[var(--border)]">
+                  <div className="flex items-center justify-between">
+                    <label className="label mb-0">Produk Pembanding (opsional, maks. 3 total)</label>
+                    {comparisonProducts.length < 2 && (
+                      <button className="btn-secondary text-xs py-1 px-3" onClick={handleAddComparisonProduct}>
+                        + Tambah Produk
+                      </button>
+                    )}
+                  </div>
+
+                  {comparisonProducts.map((prod, idx) => (
+                    <div key={idx} className="p-3 rounded-lg border border-[var(--border)] space-y-2 relative">
+                      <button
+                        className="absolute top-2 right-2 text-xs text-red-400 hover:text-red-300"
+                        onClick={() => handleRemoveComparisonProduct(idx)}>
+                        ✕ Hapus
+                      </button>
+                      <p className="text-xs font-semibold text-[var(--muted-foreground)]">Produk {idx + 2}</p>
+                      <input className="input-field text-sm" placeholder="Nama produk"
+                        value={prod.productName}
+                        onChange={(e) => handleComparisonProductChange(idx, 'productName', e.target.value)} />
+                      <textarea className="textarea-field text-sm" rows={2} placeholder="Fitur / Deskripsi utama"
+                        value={prod.productDescription}
+                        onChange={(e) => handleComparisonProductChange(idx, 'productDescription', e.target.value)} />
+                      <div className="grid grid-cols-2 gap-2">
+                        <input className="input-field text-sm" placeholder="Harga (opsional)"
+                          value={prod.productPrice || ''}
+                          onChange={(e) => handleComparisonProductChange(idx, 'productPrice', e.target.value)} />
+                        <input className="input-field text-sm" type="number" min="0" max="5" step="0.1" placeholder="Rating (opsional)"
+                          value={prod.productRating || ''}
+                          onChange={(e) => handleComparisonProductChange(idx, 'productRating', e.target.value ? parseFloat(e.target.value) : undefined)} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

@@ -1,4 +1,4 @@
-import { Scene, CategoryConfig } from '@/lib/types';
+import { Scene, CategoryConfig, AffiliateInput } from '@/lib/types';
 
 /**
  * Levenshtein distance for fuzzy matching
@@ -309,3 +309,146 @@ export function validateClosingScene(scenes: Scene[]): { valid: boolean; errors:
 
 /* validation failure counters (module-level) */
 export const validationFailureCounters: Record<string, number> = {};
+
+/**
+ * Hasil validasi faktualitas affiliate.
+ */
+export interface AffiliateFactualityResult {
+  valid: boolean;
+  flags: Array<{
+    sceneIndex: number;
+    text: string;
+    reason: string;
+    type: 'unverified_stat' | 'unverified_certification' | 'superlative';
+  }>;
+}
+
+/**
+ * Pola angka persentase — misal "95%", "100%", "3.5%"
+ */
+const PERCENTAGE_PATTERN = /\b\d+(?:[.,]\d+)?\s*%/;
+
+/**
+ * Pola kata kunci sertifikasi/klaim resmi
+ */
+const CERTIFICATION_KEYWORDS = /\b(BPOM|halal|ISO\s*\d+|SNI|teruji\s*klinis|terdaftar\s*(?:di\s*)?BPOM|bersertifikat|tersertifikasi)\b/i;
+
+/**
+ * Pola superlatif tak terverifikasi
+ */
+const SUPERLATIVE_PATTERNS = [
+  /\bnomor\s*1\b/i,
+  /\b(?:nomor\s*)?satu\s*(?:di|se)\b/i,
+  /\bterlaris\b/i,
+  /\bterbaik\s*(?:se|di)\b/i,
+  /\bpaling\s+(?:laku|laris|baik|populer|diminati)\b/i,
+  /\bno\.?\s*1\b/i,
+  /\btop\s*(?:satu|1)\b/i,
+  /\bbest\s*seller\b/i,
+  /\bmost\s+popular\b/i,
+];
+
+/**
+ * Ekstrak semua angka persentase dari teks.
+ */
+function extractPercentages(text: string): string[] {
+  const matches: string[] = [];
+  let match: RegExpExecArray | null;
+  const regex = new RegExp(PERCENTAGE_PATTERN.source, 'gi');
+  while ((match = regex.exec(text)) !== null) {
+    matches.push(match[0]);
+  }
+  return matches;
+}
+
+/**
+ * Cek apakah sebuah string persentase muncul di input produk.
+ * Contoh: "95%" di output → cek apakah "95%" atau "95 persen" ada di input.
+ */
+function percentageExistsInInput(percentage: string, inputText: string): boolean {
+  const numPart = percentage.replace(/\s*%/, '').trim();
+  // Cek exact match: "95%"
+  if (inputText.includes(percentage)) return true;
+  // Cek "95 persen"
+  if (inputText.includes(`${numPart} persen`)) return true;
+  // Cek "95%" tanpa spasi
+  if (inputText.includes(`${numPart}%`)) return true;
+  return false;
+}
+
+/**
+ * Validasi pasca-generate untuk deteksi klaim mencurigakan di script affiliate.
+ * Heuristik berbasis regex/keyword — cepat, tanpa biaya API tambahan.
+ *
+ * Mendeteksi:
+ * 1. Angka persentase yang tidak ada di input produk
+ * 2. Kata kunci sertifikasi (BPOM, halal, ISO, SNI, teruji klinis) yang tidak ada di input
+ * 3. Superlatif tak terverifikasi (nomor 1, terlaris, terbaik se-Indonesia)
+ *
+ * @param scenes - Scene hasil generate
+ * @param affiliateInput - Input affiliate (single product atau comparison)
+ * @returns AffiliateFactualityResult — tidak throw, hanya log
+ */
+export function validateAffiliateFactuality(
+  scenes: Scene[],
+  affiliateInput: AffiliateInput
+): AffiliateFactualityResult {
+  const flags: AffiliateFactualityResult['flags'] = [];
+
+  // Gabung semua teks input produk untuk referensi
+  const inputTexts: string[] = [affiliateInput.productDescription];
+  if (affiliateInput.comparisonProducts) {
+    affiliateInput.comparisonProducts.forEach(p => inputTexts.push(p.productDescription));
+  }
+  const combinedInput = inputTexts.join(' ').toLowerCase();
+
+  for (let i = 0; i < scenes.length; i++) {
+    const narration = scenes[i].narration;
+
+    // 1. Deteksi angka persentase yang tidak ada di input
+    const percentages = extractPercentages(narration);
+    for (const pct of percentages) {
+      if (!percentageExistsInInput(pct, combinedInput)) {
+        flags.push({
+          sceneIndex: i,
+          text: pct,
+          reason: `Angka persentase "${pct}" tidak ditemukan di input produk — kemungkinan halusinasi statistik`,
+          type: 'unverified_stat',
+        });
+      }
+    }
+
+    // 2. Deteksi kata kunci sertifikasi yang tidak ada di input (loop semua match)
+    const certRegex = new RegExp(CERTIFICATION_KEYWORDS.source, 'gi');
+    let certMatch: RegExpExecArray | null;
+    while ((certMatch = certRegex.exec(narration)) !== null) {
+      const certWord = certMatch[0].toLowerCase();
+      if (!combinedInput.includes(certWord)) {
+        flags.push({
+          sceneIndex: i,
+          text: certMatch[0],
+          reason: `Klaim sertifikasi "${certMatch[0]}" tidak disebutkan di input produk`,
+          type: 'unverified_certification',
+        });
+      }
+    }
+
+    // 3. Deteksi superlatif tak terverifikasi
+    for (const pattern of SUPERLATIVE_PATTERNS) {
+      const superMatch = narration.match(pattern);
+      if (superMatch) {
+        const superWord = superMatch[0].toLowerCase();
+        if (!combinedInput.includes(superWord)) {
+          flags.push({
+            sceneIndex: i,
+            text: superMatch[0],
+            reason: `Superlatif tak terverifikasi "${superMatch[0]}" — tidak ada di input produk`,
+            type: 'superlative',
+          });
+        }
+      }
+    }
+  }
+
+  return { valid: flags.length === 0, flags };
+}

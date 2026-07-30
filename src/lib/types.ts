@@ -111,13 +111,21 @@ export interface GTTSSettings {
 
 export type TTSSettings = CartesiaSettings | ElevenLabsSettings | GTTSSettings;
 
-// Affiliate input
+// Affiliate input — simplified, no URL crawl, no reviews
+export interface AffiliateProductBasic {
+  productName: string;        // wajib
+  productDescription: string; // wajib — free text, fitur/deskripsi utama
+  productPrice?: string;      // opsional
+  productRating?: number;     // opsional
+}
+
 export interface AffiliateInput {
-  productUrl?: string;
-  productDescription?: string;
-  productPrice?: string;
-  productRating?: number;
-  reviews?: string[];
+  productName: string;        // wajib (single product mode)
+  productDescription: string; // wajib — free text, fitur/deskripsi utama
+  productPrice?: string;      // opsional
+  productRating?: number;     // opsional
+  /** Untuk mode perbandingan (tier long/3 menit) — maksimal 3 produk */
+  comparisonProducts?: AffiliateProductBasic[];
 }
 
 // API types

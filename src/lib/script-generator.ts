@@ -1,7 +1,7 @@
 import { aiCompletion } from '@/lib/ai/completion';
 import { getCategoryConfig, getCustomCategoryConfig } from '@/lib/categories';
-import { getDurationConfig } from '@/lib/duration';
-import { parseScriptJson, validateScriptScenes, validateContentRules, validateClosingScene, validationFailureCounters } from '@/lib/script-validator';
+import { getDurationConfigForCategory } from '@/lib/duration';
+import { parseScriptJson, validateScriptScenes, validateContentRules, validateClosingScene, validationFailureCounters, validateAffiliateFactuality } from '@/lib/script-validator';
 import { Scene, CategoryId, DurationTier, AffiliateInput, GenerateScriptProgress, HookPatternType, ScriptSkeleton, CategoryConfig } from '@/lib/types';
 import { getOptionalEnvVar } from '@/lib/env';
 import { getTopHooks } from '@/lib/dynamicHooks';
@@ -27,7 +27,7 @@ const scriptCache = new Map<string, { scenes: Scene[]; failedSegment?: number; t
 const CACHE_TTL = 60 * 60 * 1000; // 1 jam
 
 function getCacheKey(categoryId: CategoryId, topic: string, duration: DurationTier, affiliateInput?: AffiliateInput): string {
-  const affSuffix = affiliateInput?.productDescription ? `:${affiliateInput.productDescription.slice(0, 50)}` : '';
+  const affSuffix = affiliateInput?.productName ? `:${affiliateInput.productName.slice(0, 50)}` : '';
   return `${categoryId}:${topic}:${duration}${affSuffix}`;
 }
 
@@ -235,7 +235,7 @@ function buildSegmentPrompt(
 ): string {
   const config = resolveConfig(categoryId, explicitConfig);
   const skeleton = getScriptSkeleton(config);
-  const durConfig = getDurationConfig(duration);
+  const durConfig = getDurationConfigForCategory(categoryId, duration);
   const scenesPerSegment = Math.ceil(durConfig.targetScenes / totalSegments);
 
   let prompt = '';
@@ -252,7 +252,65 @@ ${trendingProduct.commission_score !== undefined ? `Skor Komisi: ${trendingProdu
 ${trendingProduct.trend_growth_score !== undefined ? `Skor Pertumbuhan Tren: ${trendingProduct.trend_growth_score}` : ''}
 
 PENTING: Produk di atas adalah produk yang BENAR-BENAR SEDANG TRENDING di pasaran saat ini. 
-Gunakan data ini sebagai referensi utama dalam review. Jangan mengarang data yang tidak ada.` : '';
+Gunakan data ini sebagai referensi utama dalam review. Jangan mengarang data yang tidak ada.
+
+Data di atas dari TrendTracker adalah FAKTA yang boleh dipakai. Field yang TIDAK muncul di data ini (undefined/kosong) TIDAK BOLEH diisi asal — anggap saja informasi tersebut tidak tersedia.` : '';
+
+  // Bangun blok data produk untuk affiliate (single product atau comparison)
+  let affiliateProductBlock = '';
+  if (categoryId === 'affiliate' && affiliateInput) {
+    const isComparison = affiliateInput.comparisonProducts && affiliateInput.comparisonProducts.length > 0 && duration === 'long';
+
+    if (isComparison) {
+      // Mode perbandingan: tampilkan semua produk
+      const allProducts = [
+        {
+          productName: affiliateInput.productName,
+          productDescription: affiliateInput.productDescription,
+          productPrice: affiliateInput.productPrice,
+          productRating: affiliateInput.productRating,
+        },
+        ...affiliateInput.comparisonProducts!,
+      ];
+
+      affiliateProductBlock = `
+DATA PRODUK UNTUK PERBANDINGAN (${allProducts.length} produk):
+
+${allProducts.map((p, i) => `--- PRODUK ${i + 1} ---
+Nama: ${p.productName}
+Fitur/Deskripsi: ${p.productDescription}
+${p.productPrice ? `Harga: Rp ${p.productPrice}` : ''}
+${p.productRating ? `Rating: ${p.productRating}/5` : ''}`).join('\n\n')}
+
+INSTRUKSI PERBANDINGAN:
+- Bandingkan fitur antar produk SECARA FAKTUAL berdasarkan deskripsi yang diberikan.
+- Sorot perbedaan harga, fitur, dan rating jika tersedia.
+- Jangan menambah klaim yang tidak ada di data input.
+- Akhiri dengan rekomendasi untuk audiens berdasarkan kebutuhan yang berbeda.
+
+ATURAN KETAT — HANYA gunakan fitur/klaim yang SECARA EKSPLISIT tertulis di 'Fitur/Deskripsi' masing-masing produk di atas. DILARANG KERAS menambahkan:
+(a) angka/persentase yang tidak ada di input (misal 'terbukti 95% efektif'),
+(b) klaim sertifikasi/BPOM/halal/ISO kecuali eksplisit disebut user,
+(c) superlatif tak terverifikasi ('nomor 1 di Indonesia', 'terlaris'),
+(d) perbandingan dengan brand kompetitor spesifik yang tidak diminta.
+Jika deskripsi input terbatas/singkat, buat script yang singkat dan jujur sesuai info yang ada — JANGAN mengarang detail tambahan untuk membuat script terasa lebih lengkap.`;
+    } else {
+      // Mode single product (short/standard)
+      affiliateProductBlock = `
+DATA PRODUK (WAJIB gunakan data ini, JANGAN mengarang):
+Nama Produk: ${affiliateInput.productName}
+Fitur/Deskripsi Utama: ${affiliateInput.productDescription}
+${affiliateInput.productPrice ? `Harga: Rp ${affiliateInput.productPrice}` : ''}
+${affiliateInput.productRating ? `Rating: ${affiliateInput.productRating}/5` : ''}
+
+ATURAN KETAT — HANYA gunakan fitur/klaim yang SECARA EKSPLISIT tertulis di 'Fitur/Deskripsi Utama' berikut. DILARANG KERAS menambahkan:
+(a) angka/persentase yang tidak ada di input (misal 'terbukti 95% efektif'),
+(b) klaim sertifikasi/BPOM/halal/ISO kecuali eksplisit disebut user,
+(c) superlatif tak terverifikasi ('nomor 1 di Indonesia', 'terlaris'),
+(d) perbandingan dengan brand kompetitor spesifik yang tidak diminta.
+Jika deskripsi input terbatas/singkat, buat script yang singkat dan jujur sesuai info yang ada — JANGAN mengarang detail tambahan untuk membuat script terasa lebih lengkap.`;
+    }
+  }
 
   if (segmentIndex === 0) {
     // First segment: generate first scenes using the global outline
@@ -265,18 +323,7 @@ ${globalOutline}
 Target: ${scenesPerSegment} scene pertama (total ${durConfig.targetScenes} scene untuk seluruh video).
 Durasi: ${durConfig.label}.
 
-${categoryId === 'affiliate' && affiliateInput ? `
-DATA PRODUK (WAJIB gunakan data ini, JANGAN mengarang):
-${affiliateInput.productUrl ? `URL: ${affiliateInput.productUrl}` : ''}
-${affiliateInput.productDescription ? `Deskripsi: ${affiliateInput.productDescription}` : ''}
-${affiliateInput.productPrice ? `Harga: Rp ${affiliateInput.productPrice}` : ''}
-${affiliateInput.productRating ? `Rating: ${affiliateInput.productRating}/5` : ''}
-${affiliateInput.reviews && affiliateInput.reviews.length > 0 ? `Ulasan dari internet: ${affiliateInput.reviews.join('\n')}` : ''}
-
-${!affiliateInput.reviews || affiliateInput.reviews.length === 0 ? `
-PENTING: Buat 2-3 ulasan pengguna fiktif yang REALISTIS berdasarkan fitur deskripsi dan harga produk di atas. Ulasan harus terdengar seperti pembeli sungguhan, dengan gaya bahasa Indonesia sehari-hari.` : ''}
-
-INGAT: Hanya gunakan informasi yang ada di data di atas. Jangan tambahkan klaim atau spesifikasi yang tidak disebutkan user.` : ''}
+${affiliateProductBlock}
 ${trendingContext}
 Buat scene-scene pertama sesuai outline di atas. Scene pertama (is_hook: true) harus hook yang kuat.`;
   } else {
@@ -470,8 +517,10 @@ async function generateOutline(
 
 ${categoryId === 'affiliate' && affiliateInput ? `
 DATA PRODUK:
-${affiliateInput.productDescription ? `Deskripsi: ${affiliateInput.productDescription}` : ''}
-${affiliateInput.reviews && affiliateInput.reviews.length > 0 ? `Ulasan: ${affiliateInput.reviews.join('\n')}` : ''}
+Nama: ${affiliateInput.productName}
+Deskripsi: ${affiliateInput.productDescription}
+${affiliateInput.productPrice ? `Harga: Rp ${affiliateInput.productPrice}` : ''}
+${affiliateInput.productRating ? `Rating: ${affiliateInput.productRating}/5` : ''}
 ` : ''}
 
 Outline harus mencakup:
@@ -485,8 +534,10 @@ Format: teks biasa, 3-5 poin saja. Setiap poin dalam 1 kalimat jelas.`;
 
 ${categoryId === 'affiliate' && affiliateInput ? `
 DATA PRODUK:
-${affiliateInput.productDescription ? `Deskripsi: ${affiliateInput.productDescription}` : ''}
-${affiliateInput.reviews && affiliateInput.reviews.length > 0 ? `Ulasan: ${affiliateInput.reviews.join('\n')}` : ''}
+Nama: ${affiliateInput.productName}
+Deskripsi: ${affiliateInput.productDescription}
+${affiliateInput.productPrice ? `Harga: Rp ${affiliateInput.productPrice}` : ''}
+${affiliateInput.productRating ? `Rating: ${affiliateInput.productRating}/5` : ''}
 ` : ''}
 
 Outline harus mencakup:
@@ -502,8 +553,10 @@ Format: teks biasa, 3-5 kalimat saja. Kronologis berdasarkan fakta.`;
 
 ${categoryId === 'affiliate' && affiliateInput ? `
 DATA PRODUK:
-${affiliateInput.productDescription ? `Deskripsi: ${affiliateInput.productDescription}` : ''}
-${affiliateInput.reviews && affiliateInput.reviews.length > 0 ? `Ulasan: ${affiliateInput.reviews.join('\n')}` : ''}
+Nama: ${affiliateInput.productName}
+Deskripsi: ${affiliateInput.productDescription}
+${affiliateInput.productPrice ? `Harga: Rp ${affiliateInput.productPrice}` : ''}
+${affiliateInput.productRating ? `Rating: ${affiliateInput.productRating}/5` : ''}
 ` : ''}
 
 Outline harus mencakup:
@@ -554,7 +607,7 @@ export async function generateScript(
   //   return cached;
   // }
 
-  const durConfig = getDurationConfig(duration);
+  const durConfig = getDurationConfigForCategory(categoryId, duration);
   const totalSegments = durConfig.segments;
   const scenesPerSegment = Math.ceil(durConfig.targetScenes / totalSegments);
 
@@ -732,6 +785,15 @@ export async function generateScript(
     const closingValidation = validateClosingScene(finalScenes);
     if (!closingValidation.valid) {
       console.warn(`[ClosingValidation] ${categoryId}: ${closingValidation.errors.join('; ')}`);
+    }
+
+    // ===== AFFILIATE FACTUALITY VALIDATION =====
+    if (categoryId === 'affiliate' && affiliateInput) {
+      const factualityResult = validateAffiliateFactuality(finalScenes, affiliateInput);
+      if (factualityResult.flags.length > 0) {
+        console.warn(`[AffiliateFactuality] ${factualityResult.flags.length} klaim mencurigakan terdeteksi:`);
+      factualityResult.flags.forEach((f: { sceneIndex: number; reason: string; text: string }) => console.warn(`  - Scene ${f.sceneIndex + 1}: ${f.reason} (teks: "${f.text}")`));
+      }
     }
 
     onProgress?.({ status: 'done', message: 'Script selesai dibuat!' });
